@@ -223,18 +223,7 @@
 </head>
 <body>
 
-<div class="login-wrap" id="login-screen">
-  <h1>Rota Financeira</h1>
-  <p>Painel de Diego &amp; Luiza. Acesso só por link mágico enviado pro e-mail autorizado.</p>
-  <div class="login-card">
-    <label for="login-email">Seu e-mail</label>
-    <input type="email" id="login-email" placeholder="voce@email.com" autocomplete="email">
-    <button class="primary" id="login-send" style="width:100%;">Enviar link de acesso</button>
-    <p class="login-status" id="login-status"></p>
-  </div>
-</div>
-
-<div class="wrap" id="app-root" hidden>
+<div class="wrap" id="app-root">
   <div class="topbar">
     <div class="brand">
       <h1>Rota Financeira</h1>
@@ -243,7 +232,6 @@
     </div>
     <div class="header-actions">
       <button class="icon-btn" id="settings-btn" title="Configurações" aria-label="Configurações">⚙</button>
-      <button class="icon-btn" id="logout-btn" title="Sair" aria-label="Sair">⏻</button>
     </div>
   </div>
 
@@ -483,42 +471,6 @@
     dot.className = 'sync-dot' + (mode ? ' ' + mode : '');
     document.getElementById('sync-label').textContent = label;
   }
-
-  // ---------- login ----------
-  var loginScreen = document.getElementById('login-screen');
-  var appRoot = document.getElementById('app-root');
-  var loginStatus = document.getElementById('login-status');
-
-  document.getElementById('login-send').addEventListener('click', function(){
-    var email = document.getElementById('login-email').value.trim();
-    if(!email){ return; }
-    var btn = document.getElementById('login-send');
-    btn.disabled = true;
-    loginStatus.className = 'login-status';
-    loginStatus.textContent = 'Enviando link…';
-    supa.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.href } })
-      .then(function(res){
-        btn.disabled = false;
-        if(res.error){
-          loginStatus.className = 'login-status err';
-          loginStatus.textContent = 'Não foi possível enviar: ' + res.error.message;
-        } else {
-          loginStatus.className = 'login-status ok';
-          loginStatus.textContent = 'Link enviado! Confira seu e-mail (' + email + ') e clique no link para entrar.';
-        }
-      });
-  });
-
-  document.getElementById('logout-btn').addEventListener('click', function(){
-    supa.auth.signOut();
-  });
-
-  function showApp(){ loginScreen.hidden = true; appRoot.hidden = false; boot(); }
-  function showLogin(){ appRoot.hidden = true; loginScreen.hidden = false; }
-
-  supa.auth.onAuthStateChange(function(event, session){
-    if(session){ showApp(); } else { showLogin(); }
-  });
 
   // ---------- tabs ----------
   document.querySelectorAll('.tab-btn').forEach(function(btn){
@@ -1008,10 +960,7 @@
     setInterval(updateCountdown, 60*1000);
   }
 
-  // resolve initial session (covers magic-link redirect landing + page reload with existing session)
-  supa.auth.getSession().then(function(res){
-    if(res.data && res.data.session){ showApp(); } else { showLogin(); }
-  });
+  boot();
 })();
 </script>
 </body>

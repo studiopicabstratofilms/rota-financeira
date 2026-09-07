@@ -2,20 +2,19 @@
 
 Painel financeiro pessoal e compartilhado (Diego &amp; Luiza) — orçamento fixo, dívidas, plano de recuperação (notebook → job → dívida → reserva), lançamentos e investimentos.
 
-Site estático (`index.html` + `config.js`), sem build. Dados no Supabase. Login por link mágico (sem senha).
+Site estático (`index.html` + `config.js`), sem build. Dados no Supabase. Acesso direto pelo link — sem login.
 
 ## Publicar no GitHub Pages
 
-1. No GitHub Desktop: **Publish repository** (o botão já aparece na tela inicial).
+1. No GitHub Desktop: **Publish repository** (o botão já aparece na tela inicial), ou **Commit** + **Push** se o repositório já estiver publicado.
 2. No site do GitHub, no repositório: **Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: main / (root)** → Save.
 3. Em 1–2 minutos o site fica disponível em `https://<seu-usuario>.github.io/<nome-do-repo>/`.
 
-## Depois de publicar — 2 ajustes no Supabase (obrigatórios)
+## Publicar na Vercel (alternativa/complemento)
 
-Projeto: `studiopicabstratofilms's Project` (supabase.com/dashboard).
-
-1. **Authentication → URL Configuration**: defina o **Site URL** e adicione a URL do GitHub Pages (do passo acima) em **Redirect URLs**. Sem isso o link mágico do e-mail não redireciona de volta pro painel.
-2. **Table Editor → allowed_users**: adicione uma linha com o e-mail da Luiza (o de Diego já está cadastrado). Só e-mails nessa tabela conseguem ver/editar os dados — qualquer outra pessoa que abrir o link recebe o painel vazio/bloqueado mesmo entrando com link mágico.
+1. Em vercel.com, **Add New → Project** e importe o repositório `rota-financeira` do GitHub.
+2. Framework: **Other** (site estático, sem build). Root Directory: `/`. Build Command e Output Directory podem ficar em branco.
+3. Deploy. A Vercel gera uma URL própria (`https://rota-financeira-xxxx.vercel.app`), que também pode ser usada direto — sem login.
 
 ## Estrutura de dados (Supabase, schema `public`)
 
@@ -25,6 +24,5 @@ Projeto: `studiopicabstratofilms's Project` (supabase.com/dashboard).
 - `ledger` — lançamentos gerais de entrada/saída
 - `investments` — carteira de investimentos
 - `meta_config` — meta da reserva e dia do recebimento
-- `allowed_users` — e-mails com acesso liberado (protegido por RLS)
 
-Tudo protegido por Row Level Security: só quem faz login com um e-mail presente em `allowed_users` lê ou grava.
+O acesso é aberto por design (chave anon pública do Supabase + RLS permitindo leitura/escrita): quem tiver o link do site enxerga e edita os dados. Não há autenticação — a segurança aqui é não divulgar o link/URL do site para mais ninguém.
