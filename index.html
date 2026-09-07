@@ -115,9 +115,11 @@
   /* stage rows */
   .stages{display:flex; flex-direction:column; gap:8px;}
   .stage{
-    display:flex; align-items:center; gap:12px; background:var(--surface-raised); border:1px solid var(--line);
+    background:var(--surface-raised); border:1px solid var(--line);
     border-radius:10px; padding:12px 14px; cursor:pointer;
   }
+  .stage-top{display:flex; align-items:center; gap:12px;}
+  .stage-progress{margin-top:9px; margin-left:34px;}
   .stage.done{background:color-mix(in srgb, var(--accent-2) 12%, var(--surface)); border-color:var(--accent-2);}
   .stage-check{
     width:22px; height:22px; border-radius:50%; border:1.5px solid var(--ink-muted); flex-shrink:0;
@@ -133,14 +135,20 @@
   .stage-amt.expense{color:var(--critical);}
 
   /* fixed items / debts */
-  .item-row{display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); gap:10px;}
-  .item-row:last-child{border-bottom:none;}
+  .item-block{padding:10px 0; border-bottom:1px solid var(--line);}
+  .item-block:last-child{border-bottom:none;}
+  .item-row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
   .item-row label{display:flex; align-items:center; gap:10px; font-size:14px; flex:1; min-width:0; cursor:pointer;}
   .item-row input[type="checkbox"]{width:18px; height:18px; flex-shrink:0; accent-color:var(--accent-2); cursor:pointer;}
   .item-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .item-row.paid .item-name{color:var(--ink-muted); text-decoration:line-through;}
   .item-tag{font-size:10px; color:var(--ink-muted); border:1px solid var(--line); border-radius:5px; padding:1px 6px; flex-shrink:0;}
   .item-value{font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; white-space:nowrap; flex-shrink:0;}
+
+  /* mini progress bar (per item / per stage) */
+  .mini-progress{margin-top:7px;}
+  .mini-progress .bar-track{height:6px; border-width:1px;}
+  .mini-progress-label{font-size:10.5px; color:var(--ink-muted); margin-top:3px; display:block;}
 
   .totals-row{display:flex; gap:10px; margin-bottom:14px;}
   .totals-row .stat-card{flex:1;}
@@ -200,6 +208,10 @@
     padding:5px 8px; border-radius:6px; transform:translate(-50%,-115%); white-space:nowrap; opacity:0; transition:opacity .1s;
     font-family:'IBM Plex Mono',monospace;
   }
+  .mb-bar{cursor:pointer;}
+  .mb-legend{display:flex; flex-wrap:wrap; gap:11px; margin-top:12px;}
+  .mb-legend-item{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--ink-2);}
+  .mb-swatch{width:9px; height:9px; border-radius:2px; flex-shrink:0;}
 
   .footer-note{font-size:11px; color:var(--ink-muted); text-align:center; margin-top:22px; line-height:1.6;}
 
@@ -285,9 +297,18 @@
     <div class="card">
       <div class="card-head">
         <p class="card-title">Evolução do saldo</p>
-        <p class="card-sub">etapas concluídas + lançamentos, em ordem</p>
+        <p class="card-sub">lançamentos, em ordem</p>
       </div>
       <div class="linechart-wrap" id="chart-evolution"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <p class="card-title">Entradas x saídas por mês</p>
+        <p class="card-sub">saídas empilhadas por categoria</p>
+      </div>
+      <div class="linechart-wrap" id="chart-monthly"></div>
+      <div class="mb-legend" id="chart-monthly-legend"></div>
     </div>
   </div>
 
@@ -301,7 +322,6 @@
       <button class="subtab-btn active" data-sub="diego">Diego</button>
       <button class="subtab-btn" data-sub="luiza">Luiza</button>
       <button class="subtab-btn" data-sub="compartilhado">Compart.</button>
-      <button class="subtab-btn" data-sub="extras">Extras</button>
     </div>
     <div class="card subpanel active" id="sub-diego">
       <div class="card-head"><p class="card-title">Diego</p><p class="card-sub mono" id="sub-diego-total">R$ 0</p></div>
@@ -314,25 +334,6 @@
     <div class="card subpanel" id="sub-compartilhado">
       <div class="card-head"><p class="card-title">Compartilhado</p><p class="card-sub mono" id="sub-compartilhado-total">R$ 0</p></div>
       <div id="list-compartilhado"></div>
-    </div>
-    <div class="card subpanel" id="sub-extras">
-      <p class="card-title" style="margin-bottom:10px;">Lançar gasto extra</p>
-      <div class="form-grid">
-        <input type="text" id="extra-desc" class="grow" placeholder="Descrição (ex: gasolina, farmácia)">
-        <input type="number" id="extra-value" class="fixed" placeholder="Valor">
-        <select id="extra-owner" class="fixed">
-          <option value="diego">Diego</option>
-          <option value="luiza">Luiza</option>
-          <option value="compartilhado">Compart.</option>
-        </select>
-      </div>
-      <label class="checkline"><input type="checkbox" id="extra-installment-toggle"> despesa extraordinária — dividir em parcelas (50/50)</label>
-      <div class="form-grid" id="extra-installment-fields" style="display:none;">
-        <input type="number" id="extra-installments" class="fixed" placeholder="Nº parcelas" min="2" value="2">
-      </div>
-      <button class="primary" id="extra-add" style="width:100%; margin-top:6px;">Adicionar</button>
-      <p class="error-text" id="extra-error">Preencha descrição e valor.</p>
-      <div id="list-extras" style="margin-top:14px;"></div>
     </div>
   </div>
 
@@ -357,14 +358,27 @@
   <!-- LANÇAMENTOS -->
   <div class="panel" id="panel-lancamentos">
     <div class="card">
-      <p class="card-title" style="margin-bottom:10px;">Novo lançamento</p>
+      <p class="card-title" style="margin-bottom:10px;">Lançar pagamento ou recebimento</p>
       <div class="form-grid">
-        <input type="text" id="ledger-desc" class="grow" placeholder="Descrição (ex: job de edição)">
-        <input type="number" id="ledger-amount" class="fixed" placeholder="Valor">
         <select id="ledger-type" class="fixed">
-          <option value="income">Entrada</option>
-          <option value="expense">Saída</option>
+          <option value="expense">Saída (paguei)</option>
+          <option value="income">Entrada (recebi)</option>
         </select>
+        <input type="text" id="ledger-desc" class="grow" placeholder="Descrição (ex: mercado, job de edição)">
+        <input type="number" id="ledger-amount" class="fixed" placeholder="Valor">
+        <select id="ledger-owner" class="fixed">
+          <option value="compartilhado">Compart.</option>
+          <option value="diego">Diego</option>
+          <option value="luiza">Luiza</option>
+        </select>
+      </div>
+      <label for="ledger-target" style="display:block; font-size:11.5px; color:var(--ink-muted); margin:8px 0 4px;">Vincular a uma dívida ou meta (opcional — enche a barra de progresso dela)</label>
+      <div class="form-grid">
+        <select id="ledger-target" class="grow"><option value="">— nenhum (avulso) —</option></select>
+      </div>
+      <label class="checkline"><input type="checkbox" id="ledger-installment-toggle"> dividir em parcelas</label>
+      <div class="form-grid" id="ledger-installment-fields" style="display:none;">
+        <input type="number" id="ledger-installments" class="fixed" placeholder="Nº parcelas" min="2" value="2">
       </div>
       <button class="primary" id="ledger-add" style="width:100%; margin-top:6px;">Lançar</button>
       <p class="error-text" id="ledger-error">Preencha descrição e valor.</p>
@@ -437,6 +451,8 @@
     'Dívida': 'var(--series-4)',
     'Assinatura': 'var(--series-5)'
   };
+  var MONTHLY_CATS = ['Fixo','Alimentação','Pessoal','Dívida','Assinatura'];
+  var OUTRO_COLOR = 'var(--ink-muted)';
   var OWNER_COLOR = { diego:'var(--series-1)', luiza:'var(--series-2)', compartilhado:'var(--series-3)' };
   var OWNER_LABEL = { diego:'Diego', luiza:'Luiza', compartilhado:'Compartilhado' };
 
@@ -487,10 +503,6 @@
       document.querySelectorAll('.subpanel').forEach(function(p){ p.classList.toggle('active', p.id === 'sub-' + name); });
     });
   });
-  document.getElementById('extra-installment-toggle').addEventListener('change', function(e){
-    document.getElementById('extra-installment-fields').style.display = e.target.checked ? 'flex' : 'none';
-  });
-
   // ---------- settings modal ----------
   var settingsBackdrop = document.getElementById('settings-backdrop');
   document.getElementById('settings-btn').addEventListener('click', function(){
@@ -522,13 +534,17 @@
     document.getElementById('countdown-label').textContent = days <= 0 ? 'recebimento' : ('até o dia ' + pd);
   }
 
-  // ---------- computations (same model as the Claude-hosted version) ----------
+  // ---------- computations ----------
+  // Nota de modelo: o saldo (e a evolução) vem só do ledger — cada real gasto ou
+  // recebido é um lançamento. Marcar um item/etapa como concluído (ou vincular um
+  // lançamento a ele) só preenche a barra de progresso daquele item; não soma de
+  // novo no saldo, senão contaria o mesmo dinheiro duas vezes.
   function fixedTotals(owner){
     var planned = 0, paid = 0;
     state.fixedItems.forEach(function(i){
       if(i.owner !== owner) return;
       planned += i.planned || 0;
-      if(i.paid) paid += i.planned || 0;
+      paid += Math.min(i.paidAmount || 0, i.planned || 0);
     });
     return { planned: planned, paid: paid };
   }
@@ -537,15 +553,17 @@
     state.extras.forEach(function(e){ if(e.owner === owner) v += e.value || 0; });
     return v;
   }
+  function ledgerUnlinkedTotal(owner){
+    var v = 0;
+    state.ledger.forEach(function(e){
+      if(e.type === 'expense' && !e.targetType && e.owner === owner) v += e.amount || 0;
+    });
+    return v;
+  }
   function ownerTotals(owner){
     var f = fixedTotals(owner);
-    var ex = extrasTotal(owner);
+    var ex = extrasTotal(owner) + ledgerUnlinkedTotal(owner);
     return { planned: f.planned + ex, paid: f.paid + ex };
-  }
-  function stageBalance(){
-    var b = 0;
-    state.stages.forEach(function(s){ if(s.done) b += (s.type === 'income' ? 1 : -1) * (s.amount || 0); });
-    return b;
   }
   function ledgerBalance(){
     var b = 0;
@@ -553,7 +571,7 @@
     return b;
   }
   function reserveAmount(){ return Math.max(0, ledgerBalance()); }
-  function saldoAtual(){ return stageBalance() + ledgerBalance(); }
+  function saldoAtual(){ return ledgerBalance(); }
   function investTotal(){
     var v = 0; state.investments.forEach(function(i){ v += i.value || 0; }); return v;
   }
@@ -565,11 +583,18 @@
   function openDebtsTotal(){
     var total = 0;
     var negStage = state.stages.filter(function(s){ return /dívida negativada/i.test(s.label||''); })[0];
-    if(negStage && !negStage.done) total += negStage.amount || 0;
+    if(negStage) total += Math.max(0, (negStage.amount||0) - (negStage.progress||0));
     state.fixedItems.forEach(function(i){
-      if(i.category === 'Dívida' && !i.paid) total += i.planned || 0;
+      if(i.category === 'Dívida') total += Math.max(0, (i.planned||0) - (i.paidAmount||0));
     });
     return total;
+  }
+  function progressBarHTML(paid, planned){
+    var pct = planned > 0 ? Math.min(100, Math.max(0, (paid/planned)*100)) : 0;
+    return '<div class="mini-progress">' +
+      '<div class="bar-track small"><div class="bar-fill" style="width:' + pct.toFixed(1) + '%"></div></div>' +
+      '<span class="mini-progress-label mono">' + fmt(paid) + ' de ' + fmt(planned) + ' · ' + pct.toFixed(0) + '%</span>' +
+      '</div>';
   }
 
   // ---------- render: stats ----------
@@ -621,14 +646,12 @@
     renderBarChart('chart-owner', ownerRows, OWNER_COLOR);
 
     renderEvolution();
+    renderMonthlyChart();
   }
 
   function renderEvolution(){
     var el = document.getElementById('chart-evolution');
     var events = [];
-    state.stages.forEach(function(s){
-      if(s.done && s.completedAt) events.push({ date: s.completedAt, delta: (s.type==='income'?1:-1)*(s.amount||0), label: s.label });
-    });
     state.ledger.forEach(function(e){
       if(e.date) events.push({ date: e.date, delta: (e.type==='income'?1:-1)*(e.amount||0), label: e.desc });
     });
@@ -691,6 +714,99 @@
     svg.addEventListener('mouseleave', hide);
   }
 
+  function monthKey(d){ var dt = new Date(d); return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0'); }
+  function monthLabel(key){
+    var parts = key.split('-');
+    var names = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    return names[parseInt(parts[1],10)-1] + '/' + parts[0].slice(2);
+  }
+
+  function renderMonthlyChart(){
+    var el = document.getElementById('chart-monthly');
+    var legendEl = document.getElementById('chart-monthly-legend');
+    if(!el) return;
+    var months = {};
+    state.ledger.forEach(function(e){
+      if(!e.date) return;
+      var k = monthKey(e.date);
+      if(!months[k]) months[k] = { income:0, expense:{} };
+      if(e.type === 'income'){ months[k].income += e.amount||0; }
+      else {
+        var cat = MONTHLY_CATS.indexOf(e.category) >= 0 ? e.category : 'Outro';
+        months[k].expense[cat] = (months[k].expense[cat]||0) + (e.amount||0);
+      }
+    });
+    var keys = Object.keys(months).sort().slice(-6);
+    if(keys.length === 0){
+      el.innerHTML = '<p class="empty">Lance pagamentos e recebimentos para ver o gráfico mensal.</p>';
+      if(legendEl) legendEl.innerHTML = '';
+      return;
+    }
+
+    var w = 640, h = 220, pad = 30, gap = 18;
+    var groupW = (w - pad*2 - gap*(keys.length-1)) / keys.length;
+    var barW = (groupW - 6) / 2;
+
+    var maxV = 1;
+    keys.forEach(function(k){
+      var m = months[k];
+      var expTotal = Object.keys(m.expense).reduce(function(s,c){ return s + m.expense[c]; }, 0);
+      maxV = Math.max(maxV, m.income, expTotal);
+    });
+    var baseY = h - pad;
+    function segH(v){ return (v/maxV) * (h - pad*2); }
+
+    var bars = '';
+    keys.forEach(function(k, gi){
+      var m = months[k];
+      var gx = pad + gi*(groupW+gap);
+      var incH = Math.max(0, segH(m.income) - (m.income>0?2:0));
+      bars += '<rect class="mb-bar" data-tip="' + esc(monthLabel(k)) + ' · entradas · ' + fmt(m.income) + '" x="' + gx.toFixed(1) + '" y="' + (baseY-incH).toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + incH.toFixed(1) + '" rx="3" fill="var(--accent-2)" />';
+
+      var ex = gx + barW + 6;
+      var yCursor = baseY;
+      MONTHLY_CATS.concat(['Outro']).forEach(function(cat){
+        var v = m.expense[cat];
+        if(!v) return;
+        var hgt = Math.max(0, segH(v) - 2);
+        var segY = yCursor - hgt - 2;
+        var color = cat === 'Outro' ? OUTRO_COLOR : CATEGORY_COLOR[cat];
+        bars += '<rect class="mb-bar" data-tip="' + esc(monthLabel(k)) + ' · ' + esc(cat) + ' · ' + fmt(v) + '" x="' + ex.toFixed(1) + '" y="' + segY.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + hgt.toFixed(1) + '" rx="2" fill="' + color + '" />';
+        yCursor = segY - 2;
+      });
+      bars += '<text x="' + (gx+groupW/2).toFixed(1) + '" y="' + (h-9) + '" text-anchor="middle" font-size="10" fill="var(--ink-muted)" font-family="Inter,sans-serif">' + esc(monthLabel(k)) + '</text>';
+    });
+
+    el.innerHTML =
+      '<svg class="linechart" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" id="mb-svg">' +
+        '<line x1="' + pad + '" y1="' + baseY + '" x2="' + (w-pad) + '" y2="' + baseY + '" stroke="var(--line)" stroke-width="1" />' +
+        bars +
+      '</svg>' +
+      '<div class="lc-tooltip" id="mb-tooltip"></div>';
+
+    var svg = document.getElementById('mb-svg');
+    var tip = document.getElementById('mb-tooltip');
+    svg.querySelectorAll('.mb-bar').forEach(function(r){
+      r.addEventListener('mouseenter', function(){
+        var rect = r.getBoundingClientRect(), wrap = svg.getBoundingClientRect();
+        tip.style.left = (rect.left - wrap.left + rect.width/2) + 'px';
+        tip.style.top = (rect.top - wrap.top) + 'px';
+        tip.textContent = r.dataset.tip;
+        tip.style.opacity = 1;
+      });
+      r.addEventListener('mouseleave', function(){ tip.style.opacity = 0; });
+    });
+
+    if(legendEl){
+      var cats = MONTHLY_CATS.concat(['Outro']);
+      legendEl.innerHTML = '<span class="mb-legend-item"><span class="mb-swatch" style="background:var(--accent-2)"></span>Entradas</span>' +
+        cats.map(function(c){
+          var color = c === 'Outro' ? OUTRO_COLOR : CATEGORY_COLOR[c];
+          return '<span class="mb-legend-item"><span class="mb-swatch" style="background:' + color + '"></span>' + esc(c) + '</span>';
+        }).join('');
+    }
+  }
+
   // ---------- render: orçamento ----------
   function renderFixedList(owner, containerId, totalElId){
     var items = state.fixedItems.filter(function(i){ return i.owner === owner; }).sort(function(a,b){ return (a.order||0)-(b.order||0); });
@@ -698,11 +814,14 @@
     if(items.length === 0){ el.innerHTML = '<p class="empty">Nenhum item cadastrado.</p>'; }
     else {
       el.innerHTML = items.map(function(i){
-        return '<div class="item-row' + (i.paid ? ' paid' : '') + '">' +
+        return '<div class="item-block">' +
+          '<div class="item-row' + (i.paid ? ' paid' : '') + '">' +
           '<label><input type="checkbox" class="fixed-check" data-id="' + i.id + '" ' + (i.paid?'checked':'') + ' />' +
           '<span class="item-name">' + esc(i.name) + '</span>' +
           '<span class="item-tag">' + esc(i.category) + '</span></label>' +
           '<span class="item-value">' + fmt(i.planned) + '</span>' +
+          '</div>' +
+          progressBarHTML(i.paidAmount||0, i.planned) +
           '</div>';
       }).join('');
     }
@@ -710,25 +829,10 @@
     if(totalElId) document.getElementById(totalElId).textContent = fmt(t.planned);
   }
 
-  function renderExtrasList(){
-    var el = document.getElementById('list-extras');
-    if(state.extras.length === 0){ el.innerHTML = '<p class="empty">Nenhum gasto extra lançado ainda.</p>'; return; }
-    var sorted = state.extras.slice().sort(function(a,b){ return new Date(b.date||0) - new Date(a.date||0); });
-    el.innerHTML = sorted.map(function(e){
-      return '<div class="list-item">' +
-        '<div><div class="li-desc">' + esc(e.desc) + '</div><div class="li-meta">' + OWNER_LABEL[e.owner] + '</div></div>' +
-        '<div style="display:flex; align-items:center; gap:8px;">' +
-        '<span class="li-amt expense mono">' + fmt(e.value) + '</span>' +
-        '<button class="del-btn" data-del-extra="' + e.id + '">✕</button>' +
-        '</div></div>';
-    }).join('');
-  }
-
   function renderOrcamentoTab(){
     renderFixedList('diego', 'list-diego', 'sub-diego-total');
     renderFixedList('luiza', 'list-luiza', 'sub-luiza-total');
     renderFixedList('compartilhado', 'list-compartilhado', 'sub-compartilhado-total');
-    renderExtrasList();
     var d = ownerTotals('diego'), l = ownerTotals('luiza'), c = ownerTotals('compartilhado');
     document.getElementById('orc-planejado').textContent = fmt(d.planned + l.planned + c.planned);
     document.getElementById('orc-pago').textContent = fmt(d.paid + l.paid + c.paid);
@@ -741,9 +845,12 @@
     if(sorted.length === 0){ el.innerHTML = '<p class="empty">Nenhuma etapa cadastrada.</p>'; return; }
     el.innerHTML = sorted.map(function(s){
       return '<div class="stage' + (s.done?' done':'') + '" data-id="' + s.id + '">' +
+        '<div class="stage-top">' +
         '<div class="stage-check">' + (s.done?'✓':'') + '</div>' +
         '<div class="stage-info"><div class="stage-name">' + esc(s.label) + '</div><div class="stage-note">' + esc(s.note||'') + '</div></div>' +
         '<div class="stage-amt ' + s.type + '">' + fmtSigned(s.amount, s.type) + '</div>' +
+        '</div>' +
+        '<div class="stage-progress">' + progressBarHTML(s.progress||0, s.amount) + '</div>' +
         '</div>';
     }).join('');
   }
@@ -755,17 +862,31 @@
     if(items.length === 0){ el.innerHTML = '<p class="empty">Nenhuma dívida recorrente cadastrada.</p>'; }
     else {
       el.innerHTML = items.map(function(i){
-        return '<div class="item-row' + (i.paid?' paid':'') + '">' +
+        return '<div class="item-block">' +
+          '<div class="item-row' + (i.paid?' paid':'') + '">' +
           '<label><input type="checkbox" class="fixed-check" data-id="' + i.id + '" ' + (i.paid?'checked':'') + ' />' +
           '<span class="item-name">' + esc(i.name) + '</span>' +
           '<span class="item-tag">' + OWNER_LABEL[i.owner] + '</span></label>' +
-          '<span class="item-value">' + fmt(i.planned) + '</span></div>';
+          '<span class="item-value">' + fmt(i.planned) + '</span></div>' +
+          progressBarHTML(i.paidAmount||0, i.planned) +
+          '</div>';
       }).join('');
     }
     document.getElementById('debts-open-total').textContent = fmt(openDebtsTotal()) + ' em aberto';
   }
 
   // ---------- render: lançamentos ----------
+  function targetName(e){
+    if(e.targetType === 'fixed_item'){
+      var fi = state.fixedItems.filter(function(x){ return x.id === e.targetId; })[0];
+      return fi ? fi.name : null;
+    }
+    if(e.targetType === 'plan_stage'){
+      var st = state.stages.filter(function(x){ return x.id === e.targetId; })[0];
+      return st ? st.label : null;
+    }
+    return null;
+  }
   function renderLedger(){
     var el = document.getElementById('list-ledger');
     document.getElementById('ledger-count').textContent = state.ledger.length ? (state.ledger.length + ' registro(s)') : '';
@@ -773,13 +894,49 @@
     var sorted = state.ledger.slice().sort(function(a,b){ return new Date(b.date||0) - new Date(a.date||0); });
     el.innerHTML = sorted.map(function(e){
       var d = e.date ? new Date(e.date).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '';
+      var tn = targetName(e);
+      var meta = [d, OWNER_LABEL[e.owner] || '', tn || e.category].filter(Boolean).join(' · ');
       return '<div class="list-item">' +
-        '<div><div class="li-desc">' + esc(e.desc) + '</div><div class="li-meta">' + d + '</div></div>' +
+        '<div><div class="li-desc">' + esc(e.desc) + '</div><div class="li-meta">' + esc(meta) + '</div></div>' +
         '<div style="display:flex; align-items:center; gap:8px;">' +
         '<span class="li-amt ' + e.type + ' mono">' + fmtSigned(e.amount, e.type) + '</span>' +
         '<button class="del-btn" data-del-ledger="' + e.id + '">✕</button>' +
         '</div></div>';
     }).join('');
+  }
+
+  // ---------- vincular a (dívida/meta) options ----------
+  function renderLedgerTargetOptions(){
+    var sel = document.getElementById('ledger-target');
+    var typeSel = document.getElementById('ledger-type');
+    if(!sel || !typeSel) return;
+    var type = typeSel.value;
+    var prev = sel.value;
+    var html = '<option value="">— nenhum (avulso) —</option>';
+    if(type === 'expense'){
+      var items = state.fixedItems.slice().sort(function(a,b){ return (a.order||0)-(b.order||0); });
+      if(items.length){
+        html += '<optgroup label="Itens do orçamento">' + items.map(function(i){
+          return '<option value="fixed_item:' + i.id + '">' + esc(i.name) + ' (' + fmt(i.paidAmount||0) + '/' + fmt(i.planned) + ')</option>';
+        }).join('') + '</optgroup>';
+      }
+      var expStages = state.stages.filter(function(s){ return s.type === 'expense'; });
+      if(expStages.length){
+        html += '<optgroup label="Metas do plano">' + expStages.map(function(s){
+          return '<option value="plan_stage:' + s.id + '">' + esc(s.label) + ' (' + fmt(s.progress||0) + '/' + fmt(s.amount) + ')</option>';
+        }).join('') + '</optgroup>';
+      }
+    } else {
+      var incStages = state.stages.filter(function(s){ return s.type === 'income'; });
+      if(incStages.length){
+        html += '<optgroup label="Metas do plano">' + incStages.map(function(s){
+          return '<option value="plan_stage:' + s.id + '">' + esc(s.label) + ' (' + fmt(s.progress||0) + '/' + fmt(s.amount) + ')</option>';
+        }).join('') + '</optgroup>';
+      }
+    }
+    sel.innerHTML = html;
+    var stillThere = Array.prototype.some.call(sel.options, function(o){ return o.value === prev; });
+    if(stillThere) sel.value = prev;
   }
 
   // ---------- render: investimentos ----------
@@ -806,6 +963,7 @@
     renderDebtsTab();
     renderLedger();
     renderInvestimentos();
+    renderLedgerTargetOptions();
   }
 
   // ---------- event delegation for dynamic content ----------
@@ -813,7 +971,9 @@
     if(e.target.classList.contains('fixed-check')){
       var id = e.target.dataset.id;
       var checked = e.target.checked;
-      supa.from('fixed_items').update({ paid: checked }).eq('id', id).then(function(res){
+      var item = state.fixedItems.filter(function(x){ return x.id === id; })[0];
+      var newAmount = checked ? (item ? item.planned : 0) : 0;
+      supa.from('fixed_items').update({ paid_amount: newAmount }).eq('id', id).then(function(res){
         if(res.error){ toast('Não foi possível salvar. Seu e-mail tem acesso a este painel?'); e.target.checked = !checked; }
       });
     }
@@ -825,7 +985,7 @@
       var s = state.stages.filter(function(x){ return x.id === id; })[0];
       if(!s) return;
       var nowDone = !s.done;
-      supa.from('plan_stages').update({ done: nowDone, completed_at: nowDone ? new Date().toISOString() : null }).eq('id', id)
+      supa.from('plan_stages').update({ progress: nowDone ? s.amount : 0 }).eq('id', id)
         .then(function(res){ if(res.error) toast('Não foi possível salvar a etapa.'); });
       return;
     }
@@ -841,47 +1001,58 @@
   });
 
   // ---------- add forms ----------
-  document.getElementById('extra-add').addEventListener('click', function(){
-    var desc = document.getElementById('extra-desc').value.trim();
-    var value = parseFloat(document.getElementById('extra-value').value);
-    var owner = document.getElementById('extra-owner').value;
-    var errEl = document.getElementById('extra-error');
-    if(!desc || isNaN(value) || value <= 0){ errEl.style.display = 'block'; return; }
-    errEl.style.display = 'none';
-
-    var isInstallment = document.getElementById('extra-installment-toggle').checked;
-    var now = new Date();
-    var rows = [];
-    if(isInstallment){
-      var n = Math.max(2, parseInt(document.getElementById('extra-installments').value, 10) || 2);
-      var per = value / n;
-      for(var k=0; k<n; k++){
-        var d = new Date(now.getFullYear(), now.getMonth()+k, now.getDate());
-        rows.push({ description: desc + ' (parcela ' + (k+1) + '/' + n + ')', value: per, owner: 'compartilhado', category: 'Extraordinária', event_date: d.toISOString() });
-      }
-    } else {
-      rows.push({ description: desc, value: value, owner: owner, category: 'Extra', event_date: now.toISOString() });
-    }
-    supa.from('extras').insert(rows).then(function(res){
-      if(res.error) toast('Não foi possível salvar. Seu e-mail tem acesso a este painel?');
-    });
-    document.getElementById('extra-desc').value = '';
-    document.getElementById('extra-value').value = '';
-    document.getElementById('extra-installment-toggle').checked = false;
-    document.getElementById('extra-installment-fields').style.display = 'none';
+  document.getElementById('ledger-type').addEventListener('change', renderLedgerTargetOptions);
+  document.getElementById('ledger-installment-toggle').addEventListener('change', function(e){
+    document.getElementById('ledger-installment-fields').style.display = e.target.checked ? 'flex' : 'none';
   });
 
   document.getElementById('ledger-add').addEventListener('click', function(){
     var desc = document.getElementById('ledger-desc').value.trim();
     var amount = parseFloat(document.getElementById('ledger-amount').value);
     var type = document.getElementById('ledger-type').value;
+    var owner = document.getElementById('ledger-owner').value;
+    var targetRaw = document.getElementById('ledger-target').value;
     var errEl = document.getElementById('ledger-error');
     if(!desc || isNaN(amount) || amount <= 0){ errEl.style.display = 'block'; return; }
     errEl.style.display = 'none';
-    supa.from('ledger').insert({ description: desc, amount: amount, type: type, event_date: new Date().toISOString() })
-      .then(function(res){ if(res.error) toast('Não foi possível salvar. Seu e-mail tem acesso a este painel?'); });
+
+    var targetType = null, targetId = null;
+    var category = type === 'income' ? 'Renda' : 'Extraordinária';
+    if(targetRaw){
+      var sep = targetRaw.indexOf(':');
+      targetType = targetRaw.slice(0, sep);
+      targetId = targetRaw.slice(sep+1);
+      if(targetType === 'fixed_item'){
+        var fi = state.fixedItems.filter(function(x){ return x.id === targetId; })[0];
+        if(fi) category = fi.category;
+      } else if(targetType === 'plan_stage'){
+        category = 'Meta do plano';
+      }
+    }
+
+    var isInstallment = document.getElementById('ledger-installment-toggle').checked;
+    var now = new Date();
+    var rows = [];
+    if(isInstallment){
+      var n = Math.max(2, parseInt(document.getElementById('ledger-installments').value, 10) || 2);
+      var per = Math.round((amount / n) * 100) / 100;
+      for(var k=0; k<n; k++){
+        var d = new Date(now.getFullYear(), now.getMonth()+k, now.getDate());
+        rows.push({ description: desc + ' (parcela ' + (k+1) + '/' + n + ')', amount: per, type: type, owner: owner, category: category, target_type: targetType, target_id: targetId, event_date: d.toISOString() });
+      }
+    } else {
+      rows.push({ description: desc, amount: amount, type: type, owner: owner, category: category, target_type: targetType, target_id: targetId, event_date: now.toISOString() });
+    }
+
+    supa.from('ledger').insert(rows).then(function(res){
+      if(res.error) toast('Não foi possível salvar. Seu e-mail tem acesso a este painel?');
+      else toast('Lançado!');
+    });
     document.getElementById('ledger-desc').value = '';
     document.getElementById('ledger-amount').value = '';
+    document.getElementById('ledger-target').value = '';
+    document.getElementById('ledger-installment-toggle').checked = false;
+    document.getElementById('ledger-installment-fields').style.display = 'none';
   });
 
   document.getElementById('inv-add').addEventListener('click', function(){
@@ -898,10 +1069,10 @@
   });
 
   // ---------- data loading + realtime ----------
-  function mapFixed(r){ return { id:r.id, name:r.name, owner:r.owner, category:r.category, planned:Number(r.planned), paid:r.paid, order:r.sort_order }; }
+  function mapFixed(r){ return { id:r.id, name:r.name, owner:r.owner, category:r.category, planned:Number(r.planned), paid:r.paid, paidAmount:Number(r.paid_amount)||0, order:r.sort_order }; }
   function mapExtra(r){ return { id:r.id, desc:r.description, value:Number(r.value), owner:r.owner, category:r.category, date:r.event_date }; }
-  function mapStage(r){ return { id:r.id, label:r.label, note:r.note, amount:Number(r.amount), type:r.type, done:r.done, completedAt:r.completed_at, order:r.sort_order }; }
-  function mapLedger(r){ return { id:r.id, desc:r.description, amount:Number(r.amount), type:r.type, date:r.event_date }; }
+  function mapStage(r){ return { id:r.id, label:r.label, note:r.note, amount:Number(r.amount), type:r.type, done:r.done, progress:Number(r.progress)||0, completedAt:r.completed_at, order:r.sort_order }; }
+  function mapLedger(r){ return { id:r.id, desc:r.description, amount:Number(r.amount), type:r.type, date:r.event_date, owner:r.owner, category:r.category, targetType:r.target_type, targetId:r.target_id }; }
   function mapInvest(r){ return { id:r.id, name:r.name, type:r.type, value:Number(r.value), date:r.event_date }; }
 
   var booted = false;
