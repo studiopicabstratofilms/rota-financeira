@@ -193,12 +193,20 @@
   .empty{font-size:13px; color:var(--ink-muted); text-align:center; padding:22px 0;}
 
   /* bars (category / owner charts) */
-  .barchart{display:flex; flex-direction:column; gap:10px;}
-  .barchart-row{display:grid; grid-template-columns:96px 1fr 64px; align-items:center; gap:10px;}
+  .barchart{display:flex; flex-direction:column; gap:2px;}
+  .barchart-row{display:grid; grid-template-columns:96px 1fr 64px; align-items:center; gap:10px; padding:4px 6px; border-radius:7px; cursor:pointer; transition:background .12s ease;}
+  .barchart-row:hover{background:var(--surface-raised);}
+  .barchart-row:hover .barchart-fill{filter:brightness(1.12);}
   .barchart-label{font-size:12.5px; color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .barchart-track{height:14px; background:var(--surface-raised); border-radius:4px; overflow:hidden;}
-  .barchart-fill{height:100%; border-radius:4px; min-width:3px;}
+  .barchart-fill{height:100%; border-radius:4px; min-width:3px; transition:filter .12s ease;}
   .barchart-val{font-family:'IBM Plex Mono',monospace; font-size:12px; text-align:right; color:var(--ink-2);}
+
+  #generic-tooltip{
+    position:fixed; pointer-events:none; background:var(--ink); color:var(--bg); font-size:11px;
+    padding:5px 8px; border-radius:6px; white-space:nowrap; opacity:0; transition:opacity .1s; z-index:100;
+    font-family:'IBM Plex Mono',monospace;
+  }
 
   /* line chart */
   .linechart-wrap{position:relative;}
@@ -309,6 +317,14 @@
       </div>
       <div class="linechart-wrap" id="chart-monthly"></div>
       <div class="mb-legend" id="chart-monthly-legend"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <p class="card-title">Gastos por segmento (mês atual)</p>
+        <p class="card-sub">mercado, hortifruti, açougue, educação, diversão…</p>
+      </div>
+      <div class="barchart" id="chart-month-categories"></div>
     </div>
   </div>
 
@@ -433,6 +449,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="generic-tooltip"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
@@ -444,15 +461,27 @@
   var SUPABASE_KEY = window.ROTA_CONFIG.supabaseKey;
   var supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+  // 5 cores validadas (identidade) para os 5 grupos mais volumosos; qualquer outro
+  // segmento (Hortifruti, Açougue, Educação, Saúde, Diversão, Extraordinária…) usa
+  // a cor neutra "Outro" — a identidade desses vem do rótulo de texto na lista, não
+  // da cor, então a lista aceita quantos segmentos a família tiver sem inventar matiz nova.
   var CATEGORY_COLOR = {
     'Fixo': 'var(--series-1)',
-    'Alimentação': 'var(--series-2)',
+    'Mercado': 'var(--series-2)',
     'Pessoal': 'var(--series-3)',
     'Dívida': 'var(--series-4)',
     'Assinatura': 'var(--series-5)'
   };
-  var MONTHLY_CATS = ['Fixo','Alimentação','Pessoal','Dívida','Assinatura'];
   var OUTRO_COLOR = 'var(--ink-muted)';
+  function categoryColorFor(cat){ return CATEGORY_COLOR[cat] || OUTRO_COLOR; }
+  // agrupamento (rollup) só para o gráfico mensal empilhado, que só cabe ~5 fatias legíveis
+  var CATEGORY_ROLLUP = {
+    'Fixo':'Fixo', 'Mercado':'Mercado', 'Hortifruti':'Mercado', 'Açougue':'Mercado',
+    'Pessoal':'Pessoal', 'Transporte':'Pessoal',
+    'Dívida':'Dívida', 'Assinatura':'Assinatura'
+  };
+  function rollupCategory(cat){ return CATEGORY_ROLLUP[cat] || 'Outro'; }
+  var MONTHLY_CATS = ['Fixo','Mercado','Pessoal','Dívida','Assinatura'];
   var OWNER_COLOR = { diego:'var(--series-1)', luiza:'var(--series-2)', compartilhado:'var(--series-3)' };
   var OWNER_LABEL = { diego:'Diego', luiza:'Luiza', compartilhado:'Compartilhado' };
 
@@ -634,19 +663,63 @@
     }).join('');
   }
 
+  function attachBarTooltips(containerId, rows){
+    var el = document.getElementById(containerId);
+    var tip = document.getElementById('generic-tooltip');
+    if(!el || !tip) return;
+    var total = rows.reduce(function(s,r){ return s + r.value; }, 0) || 1;
+    var items = el.querySelectorAll('.barchart-row');
+    items.forEach(function(row, i){
+      var r = rows[i];
+      if(!r) return;
+      var pct = ((r.value/total)*100).toFixed(0);
+      function show(ev){
+        tip.textContent = r.label + ' · ' + fmt(r.value) + ' · ' + pct + '%';
+        tip.style.opacity = 1;
+        tip.style.left = (ev.clientX + 14) + 'px';
+        tip.style.top = (ev.clientY - 12) + 'px';
+      }
+      row.addEventListener('mouseenter', show);
+      row.addEventListener('mousemove', show);
+      row.addEventListener('mouseleave', function(){ tip.style.opacity = 0; });
+    });
+  }
+
   function renderCharts(){
     var cats = categoryTotals();
     var catRows = Object.keys(cats).map(function(k){ return { key:k, label:k, value:cats[k] }; })
       .sort(function(a,b){ return b.value - a.value; });
-    renderBarChart('chart-category', catRows, CATEGORY_COLOR);
+    var catColors = {}; catRows.forEach(function(r){ catColors[r.key] = categoryColorFor(r.key); });
+    renderBarChart('chart-category', catRows, catColors);
+    attachBarTooltips('chart-category', catRows);
 
     var ownerRows = ['diego','luiza','compartilhado'].map(function(o){
       return { key:o, label:OWNER_LABEL[o], value: ownerTotals(o).planned };
     });
     renderBarChart('chart-owner', ownerRows, OWNER_COLOR);
+    attachBarTooltips('chart-owner', ownerRows);
 
     renderEvolution();
     renderMonthlyChart();
+    renderMonthCategoryChart();
+  }
+
+  function renderMonthCategoryChart(){
+    var el = document.getElementById('chart-month-categories');
+    if(!el) return;
+    var curKey = monthKey(new Date());
+    var totals = {};
+    state.ledger.forEach(function(e){
+      if(e.type !== 'expense' || !e.date) return;
+      if(monthKey(e.date) !== curKey) return;
+      totals[e.category] = (totals[e.category]||0) + (e.amount||0);
+    });
+    var rows = Object.keys(totals).map(function(k){ return { key:k, label:k, value:totals[k] }; })
+      .sort(function(a,b){ return b.value - a.value; });
+    if(rows.length === 0){ el.innerHTML = '<p class="empty">Nenhum gasto lançado este mês ainda — lance na aba Lançamentos.</p>'; return; }
+    var colors = {}; rows.forEach(function(r){ colors[r.key] = categoryColorFor(r.key); });
+    renderBarChart('chart-month-categories', rows, colors);
+    attachBarTooltips('chart-month-categories', rows);
   }
 
   function renderEvolution(){
@@ -732,7 +805,7 @@
       if(!months[k]) months[k] = { income:0, expense:{} };
       if(e.type === 'income'){ months[k].income += e.amount||0; }
       else {
-        var cat = MONTHLY_CATS.indexOf(e.category) >= 0 ? e.category : 'Outro';
+        var cat = rollupCategory(e.category);
         months[k].expense[cat] = (months[k].expense[cat]||0) + (e.amount||0);
       }
     });
