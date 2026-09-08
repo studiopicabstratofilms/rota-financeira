@@ -223,6 +223,14 @@
 
   .footer-note{font-size:11px; color:var(--ink-muted); text-align:center; margin-top:22px; line-height:1.6;}
 
+  /* income compare card */
+  .ic-row{display:flex; justify-content:space-between; align-items:baseline; padding:9px 0; border-bottom:1px solid var(--line); gap:10px;}
+  .ic-row:last-child{border-bottom:none;}
+  .ic-label{font-size:12.5px; color:var(--ink-2);}
+  .ic-val{font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; white-space:nowrap;}
+  .ic-val.pos{color:var(--good);}
+  .ic-val.neg{color:var(--critical);}
+
   /* settings modal */
   .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:50; padding:16px;}
   .modal-backdrop.open{display:flex;}
@@ -284,6 +292,36 @@
         <span class="reserve-goal mono" id="reserve-goal-label">meta R$ 13.500</span>
       </div>
       <div class="bar-track"><div class="bar-fill" id="reserve-bar" style="width:0%"></div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <p class="card-title">Renda familiar x realidade brasileira</p>
+          <p class="card-sub">IBGE · PNAD Contínua 2025</p>
+        </div>
+      </div>
+      <div class="form-grid">
+        <input type="number" id="income-value" class="fixed" placeholder="Renda mensal (R$)">
+        <input type="number" id="income-people" class="fixed" placeholder="Pessoas na casa" min="1" value="1">
+        <select id="income-state" class="grow">
+          <option value="">Estado (opcional)</option>
+          <option value="DF">Distrito Federal</option>
+          <option value="SP">São Paulo</option>
+          <option value="RS">Rio Grande do Sul</option>
+          <option value="SC">Santa Catarina</option>
+          <option value="RJ">Rio de Janeiro</option>
+          <option value="PR">Paraná</option>
+          <option value="MG">Minas Gerais</option>
+          <option value="PE">Pernambuco</option>
+          <option value="BA">Bahia</option>
+          <option value="CE">Ceará</option>
+          <option value="MA">Maranhão</option>
+        </select>
+      </div>
+      <button class="primary" id="income-save" style="width:100%; margin-top:6px;">Salvar</button>
+      <div id="income-compare" style="margin-top:14px;"></div>
+      <p class="card-sub" style="margin-top:10px;">Comparação com médias de renda domiciliar per capita — não é uma posição de percentil exata, é uma referência.</p>
     </div>
 
     <div class="card">
@@ -485,9 +523,21 @@
   var OWNER_COLOR = { diego:'var(--series-1)', luiza:'var(--series-2)', compartilhado:'var(--series-3)' };
   var OWNER_LABEL = { diego:'Diego', luiza:'Luiza', compartilhado:'Compartilhado' };
 
+  // Fonte: IBGE, PNAD Contínua 2025 — rendimento domiciliar per capita (divulgado em 2026).
+  // https://agenciadenoticias.ibge.gov.br/agencia-sala-de-imprensa/2013-agencia-de-noticias/releases/45942
+  var NATIONAL_PERCAPITA = 2316;
+  var NATIONAL_AVG_INCOME = 3367; // rendimento médio individual de todas as fontes
+  var STATE_PERCAPITA = {
+    DF:{ name:'Distrito Federal', value:4538 }, SP:{ name:'São Paulo', value:2956 },
+    RS:{ name:'Rio Grande do Sul', value:2839 }, SC:{ name:'Santa Catarina', value:2809 },
+    RJ:{ name:'Rio de Janeiro', value:2794 }, PR:{ name:'Paraná', value:2762 },
+    MG:{ name:'Minas Gerais', value:2353 }, PE:{ name:'Pernambuco', value:1600 },
+    BA:{ name:'Bahia', value:1465 }, CE:{ name:'Ceará', value:1390 }, MA:{ name:'Maranhão', value:1219 }
+  };
+
   var state = {
     fixedItems: [], extras: [], stages: [], ledger: [], investments: [],
-    config: { reserveGoal: 13500, paydayDay: 10 }
+    config: { reserveGoal: 13500, paydayDay: 10, householdIncome: 0, householdSize: 1, householdState: '' }
   };
 
   function fmt(n){
@@ -646,6 +696,37 @@
     var pct = Math.min(100, Math.max(0, (amt/goal)*100));
     document.getElementById('reserve-bar').style.width = pct.toFixed(1) + '%';
     document.getElementById('reserve-sub').textContent = 'meta: 3 meses de sobra livre · ' + pct.toFixed(0) + '% alcançado';
+  }
+
+  function renderIncomeCompare(){
+    var el = document.getElementById('income-compare');
+    if(!el) return;
+    var income = state.config.householdIncome || 0;
+    var people = Math.max(1, state.config.householdSize || 1);
+    var stateCode = state.config.householdState || '';
+
+    // preenche os campos só se o usuário não estiver com foco neles (evita apagar o que a Luiza está digitando)
+    var vEl = document.getElementById('income-value'), pEl = document.getElementById('income-people'), sEl = document.getElementById('income-state');
+    if(document.activeElement !== vEl) vEl.value = income || '';
+    if(document.activeElement !== pEl) pEl.value = people;
+    if(document.activeElement !== sEl) sEl.value = stateCode;
+
+    if(!income){ el.innerHTML = '<p class="empty">Preencha a renda mensal da casa para comparar.</p>'; return; }
+
+    var percapita = income / people;
+    function pctRow(label, base){
+      var diff = ((percapita - base) / base) * 100;
+      var sign = diff >= 0 ? '+' : '';
+      return '<div class="ic-row"><span class="ic-label">' + esc(label) + '</span>' +
+        '<span class="ic-val ' + (diff>=0?'pos':'neg') + ' mono">' + sign + diff.toFixed(0) + '%</span></div>';
+    }
+    var rows = '<div class="ic-row"><span class="ic-label">renda per capita da casa</span><span class="ic-val mono">' + fmt(percapita) + '</span></div>';
+    rows += pctRow('vs. média nacional per capita (' + fmt(NATIONAL_PERCAPITA) + ')', NATIONAL_PERCAPITA);
+    var st = STATE_PERCAPITA[stateCode];
+    if(st){ rows += pctRow('vs. média per capita ' + st.name + ' (' + fmt(st.value) + ')', st.value); }
+    var multiple = income / NATIONAL_AVG_INCOME;
+    rows += '<div class="ic-row"><span class="ic-label">÷ rendimento médio individual (' + fmt(NATIONAL_AVG_INCOME) + ')</span><span class="ic-val mono">' + multiple.toFixed(1) + 'x</span></div>';
+    el.innerHTML = rows;
   }
 
   function renderBarChart(containerId, rows, colorMap){
@@ -1031,6 +1112,7 @@
   function renderAll(){
     renderStats();
     renderReserve();
+    renderIncomeCompare();
     renderCharts();
     renderOrcamentoTab();
     renderDebtsTab();
@@ -1074,6 +1156,14 @@
   });
 
   // ---------- add forms ----------
+  document.getElementById('income-save').addEventListener('click', function(){
+    var income = parseFloat(document.getElementById('income-value').value) || 0;
+    var people = Math.max(1, parseInt(document.getElementById('income-people').value, 10) || 1);
+    var stateCode = document.getElementById('income-state').value;
+    supa.from('meta_config').update({ household_income: income, household_size: people, household_state: stateCode || null }).eq('id', true)
+      .then(function(res){ if(res.error) toast('Não foi possível salvar.'); else toast('Salvo!'); });
+  });
+
   document.getElementById('ledger-type').addEventListener('change', renderLedgerTargetOptions);
   document.getElementById('ledger-installment-toggle').addEventListener('change', function(e){
     document.getElementById('ledger-installment-fields').style.display = e.target.checked ? 'flex' : 'none';
@@ -1147,6 +1237,13 @@
   function mapStage(r){ return { id:r.id, label:r.label, note:r.note, amount:Number(r.amount), type:r.type, done:r.done, progress:Number(r.progress)||0, completedAt:r.completed_at, order:r.sort_order }; }
   function mapLedger(r){ return { id:r.id, desc:r.description, amount:Number(r.amount), type:r.type, date:r.event_date, owner:r.owner, category:r.category, targetType:r.target_type, targetId:r.target_id }; }
   function mapInvest(r){ return { id:r.id, name:r.name, type:r.type, value:Number(r.value), date:r.event_date }; }
+  function mapConfig(r){
+    return {
+      reserveGoal: Number(r.reserve_goal), paydayDay: Number(r.payday_day),
+      householdIncome: Number(r.household_income)||0, householdSize: Number(r.household_size)||1,
+      householdState: r.household_state || ''
+    };
+  }
 
   var booted = false;
   function boot(){
@@ -1174,7 +1271,7 @@
     loadAll('ledger', mapLedger, 'ledger');
     loadAll('investments', mapInvest, 'investments');
     supa.from('meta_config').select('*').eq('id', true).maybeSingle().then(function(res){
-      if(res.data){ state.config = { reserveGoal:Number(res.data.reserve_goal), paydayDay:Number(res.data.payday_day) }; renderAll(); }
+      if(res.data){ state.config = mapConfig(res.data); renderAll(); }
       done();
     });
 
@@ -1195,7 +1292,7 @@
     supa.channel('sync-meta_config')
       .on('postgres_changes', { event:'*', schema:'public', table:'meta_config' }, function(){
         supa.from('meta_config').select('*').eq('id', true).maybeSingle().then(function(res){
-          if(res.data){ state.config = { reserveGoal:Number(res.data.reserve_goal), paydayDay:Number(res.data.payday_day) }; renderAll(); }
+          if(res.data){ state.config = mapConfig(res.data); renderAll(); }
         });
       })
       .subscribe();
