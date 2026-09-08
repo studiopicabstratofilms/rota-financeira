@@ -82,11 +82,30 @@
   .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px;}
   @media (max-width:640px){ .stats{grid-template-columns:repeat(2,1fr);} }
   .stat-card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:13px 14px;}
+  .stat-icon{
+    width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    margin-bottom:9px; flex-shrink:0;
+  }
+  .stat-icon svg{width:15px; height:15px;}
+  .stat-icon.tone-good{background:color-mix(in srgb, var(--good) 16%, transparent); color:var(--good);}
+  .stat-icon.tone-critical{background:color-mix(in srgb, var(--critical) 16%, transparent); color:var(--critical);}
+  .stat-icon.tone-accent{background:color-mix(in srgb, var(--accent) 16%, transparent); color:var(--accent);}
+  .stat-icon.tone-accent2{background:color-mix(in srgb, var(--accent-2) 16%, transparent); color:var(--accent-2);}
+  .stat-icon.tone-series1{background:color-mix(in srgb, var(--series-1) 16%, transparent); color:var(--series-1);}
   .stat-card .k{font-size:11px; color:var(--ink-muted); margin:0 0 6px; text-transform:lowercase; letter-spacing:.01em;}
   .stat-card .v{font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:18px; margin:0; font-variant-numeric:tabular-nums;}
   .stat-card .v.pos{color:var(--good);}
   .stat-card .v.neg{color:var(--critical);}
   .stat-card .v.accent{color:var(--accent);}
+
+  /* gauges */
+  .gauge-wrap{position:relative; display:flex; justify-content:center;}
+  .gauge-svg{width:100%; display:block; overflow:visible;}
+  .gauge-row{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px;}
+  @media (max-width:640px){ .gauge-row{grid-template-columns:repeat(2,1fr);} }
+  .gauge-card{background:var(--surface-raised); border:1px solid var(--line); border-radius:10px; padding:8px 6px 10px; text-align:center;}
+  .gauge-card .gauge-label{font-size:10.5px; color:var(--ink-muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .gauge-hero{max-width:200px; margin:2px auto 0;}
 
   /* tabs */
   .tabs{display:flex; gap:6px; margin-bottom:16px; overflow-x:auto; padding-bottom:2px; -webkit-overflow-scrolling:touch;}
@@ -217,9 +236,11 @@
     font-family:'IBM Plex Mono',monospace;
   }
   .mb-bar{cursor:pointer;}
+  .ml-dot{cursor:pointer;}
   .mb-legend{display:flex; flex-wrap:wrap; gap:11px; margin-top:12px;}
   .mb-legend-item{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--ink-2);}
   .mb-swatch{width:9px; height:9px; border-radius:2px; flex-shrink:0;}
+  .mb-swatch.line{border-radius:50%;}
 
   .footer-note{font-size:11px; color:var(--ink-muted); text-align:center; margin-top:22px; line-height:1.6;}
 
@@ -264,10 +285,22 @@
   </div>
 
   <div class="stats">
-    <div class="stat-card"><p class="k">saldo atual</p><p class="v" id="stat-saldo">R$ 0</p></div>
-    <div class="stat-card"><p class="k" id="countdown-label">até o dia 10</p><p class="v accent" id="stat-countdown">—</p></div>
-    <div class="stat-card"><p class="k">reserva</p><p class="v" id="stat-reserva" style="color:var(--accent-2)">R$ 0</p></div>
-    <div class="stat-card"><p class="k">planejado no mês</p><p class="v" id="stat-planejado">R$ 0</p></div>
+    <div class="stat-card">
+      <div class="stat-icon tone-good" id="stat-icon-saldo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
+      <p class="k">saldo atual</p><p class="v" id="stat-saldo">R$ 0</p>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon tone-accent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></div>
+      <p class="k" id="countdown-label">até o dia 10</p><p class="v accent" id="stat-countdown">—</p>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon tone-accent2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div>
+      <p class="k">reserva</p><p class="v" id="stat-reserva" style="color:var(--accent-2)">R$ 0</p>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon tone-series1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><line x1="9" y1="12" x2="15" y2="12"></line><line x1="9" y1="16" x2="15" y2="16"></line></svg></div>
+      <p class="k">planejado no mês</p><p class="v" id="stat-planejado">R$ 0</p>
+    </div>
   </div>
 
   <div class="tabs">
@@ -291,7 +324,7 @@
         <span class="reserve-amt mono" id="reserve-amt">R$ 0</span>
         <span class="reserve-goal mono" id="reserve-goal-label">meta R$ 13.500</span>
       </div>
-      <div class="bar-track"><div class="bar-fill" id="reserve-bar" style="width:0%"></div></div>
+      <div class="gauge-wrap gauge-hero" id="reserve-gauge"></div>
     </div>
 
     <div class="card">
@@ -342,16 +375,8 @@
 
     <div class="card">
       <div class="card-head">
-        <p class="card-title">Evolução do saldo</p>
-        <p class="card-sub">lançamentos, em ordem</p>
-      </div>
-      <div class="linechart-wrap" id="chart-evolution"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-head">
-        <p class="card-title">Entradas x saídas por mês</p>
-        <p class="card-sub">saídas empilhadas por categoria</p>
+        <p class="card-title">Entradas, saídas e saldo por mês</p>
+        <p class="card-sub">barras = saídas por categoria · linha = saldo acumulado</p>
       </div>
       <div class="linechart-wrap" id="chart-monthly"></div>
       <div class="mb-legend" id="chart-monthly-legend"></div>
@@ -398,6 +423,7 @@
         <p class="card-title">Plano: notebook → job → dívida → reserva</p>
         <p class="card-sub" id="stages-sub">toque para marcar concluído</p>
       </div>
+      <div class="gauge-row" id="stages-gauge-row"></div>
       <div class="stages" id="stages-list"></div>
     </div>
     <div class="card">
@@ -676,12 +702,28 @@
       '</div>';
   }
 
+  // medidor semicircular (gauge) reutilizável — usado na reserva e nas etapas do plano
+  function gaugeSVG(pct, color, big){
+    var clamped = Math.max(0, Math.min(100, pct||0));
+    var arcLen = Math.PI * 42; // r=42
+    var offset = arcLen * (1 - clamped/100);
+    var fs = big ? 17 : 13;
+    return '<svg class="gauge-svg" viewBox="0 0 100 58" preserveAspectRatio="xMidYMid meet">' +
+      '<path d="M8 50 A42 42 0 0 1 92 50" fill="none" stroke="var(--line)" stroke-width="9" stroke-linecap="round" />' +
+      '<path d="M8 50 A42 42 0 0 1 92 50" fill="none" stroke="' + color + '" stroke-width="9" stroke-linecap="round" ' +
+        'stroke-dasharray="' + arcLen.toFixed(2) + '" stroke-dashoffset="' + offset.toFixed(2) + '" style="transition:stroke-dashoffset .5s ease" />' +
+      '<text x="50" y="46" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-weight="700" font-size="' + fs + '" fill="var(--ink)">' + Math.round(clamped) + '%</text>' +
+      '</svg>';
+  }
+
   // ---------- render: stats ----------
   function renderStats(){
     var saldo = saldoAtual();
     var saldoEl = document.getElementById('stat-saldo');
     saldoEl.textContent = fmt(saldo);
     saldoEl.className = 'v ' + (saldo >= 0 ? 'pos' : 'neg');
+    var saldoIcon = document.getElementById('stat-icon-saldo');
+    if(saldoIcon) saldoIcon.className = 'stat-icon ' + (saldo >= 0 ? 'tone-good' : 'tone-critical');
     document.getElementById('stat-reserva').textContent = fmt(reserveAmount());
     var consolidatedPlanned = ownerTotals('diego').planned + ownerTotals('luiza').planned + ownerTotals('compartilhado').planned;
     document.getElementById('stat-planejado').textContent = fmt(consolidatedPlanned);
@@ -693,8 +735,9 @@
     var goal = state.config.reserveGoal || 13500;
     document.getElementById('reserve-amt').textContent = fmt(amt);
     document.getElementById('reserve-goal-label').textContent = 'meta ' + fmt(goal);
-    var pct = Math.min(100, Math.max(0, (amt/goal)*100));
-    document.getElementById('reserve-bar').style.width = pct.toFixed(1) + '%';
+    var pct = goal > 0 ? Math.min(100, Math.max(0, (amt/goal)*100)) : 0;
+    var color = pct >= 100 ? 'var(--good)' : 'var(--accent-2)';
+    document.getElementById('reserve-gauge').innerHTML = gaugeSVG(pct, color, true);
     document.getElementById('reserve-sub').textContent = 'meta: 3 meses de sobra livre · ' + pct.toFixed(0) + '% alcançado';
   }
 
@@ -780,7 +823,6 @@
     renderBarChart('chart-owner', ownerRows, OWNER_COLOR);
     attachBarTooltips('chart-owner', ownerRows);
 
-    renderEvolution();
     renderMonthlyChart();
     renderMonthCategoryChart();
   }
@@ -803,71 +845,6 @@
     attachBarTooltips('chart-month-categories', rows);
   }
 
-  function renderEvolution(){
-    var el = document.getElementById('chart-evolution');
-    var events = [];
-    state.ledger.forEach(function(e){
-      if(e.date) events.push({ date: e.date, delta: (e.type==='income'?1:-1)*(e.amount||0), label: e.desc });
-    });
-    events.sort(function(a,b){ return new Date(a.date) - new Date(b.date); });
-
-    if(events.length === 0){
-      el.innerHTML = '<p class="empty">Nenhum lançamento ainda — os dados aparecem aqui conforme você for registrando.</p>';
-      return;
-    }
-
-    var running = 0;
-    var points = events.map(function(e){ running += e.delta; return { date: e.date, value: running, label: e.label }; });
-    points.unshift({ date: points[0].date, value: 0, label: 'início' });
-
-    var w = 640, h = 180, pad = 28;
-    var vals = points.map(function(p){ return p.value; });
-    var minV = Math.min(0, Math.min.apply(null, vals));
-    var maxV = Math.max(0, Math.max.apply(null, vals));
-    if(minV === maxV){ maxV = minV + 1; }
-    var xStep = points.length > 1 ? (w - pad*2) / (points.length - 1) : 0;
-    function xAt(i){ return pad + i*xStep; }
-    function yAt(v){ return pad + (1 - (v - minV)/(maxV - minV)) * (h - pad*2); }
-
-    var path = points.map(function(p,i){ return (i===0?'M':'L') + xAt(i).toFixed(1) + ',' + yAt(p.value).toFixed(1); }).join(' ');
-    var zeroY = yAt(0).toFixed(1);
-    var areaPath = path + ' L' + xAt(points.length-1).toFixed(1) + ',' + (h-pad) + ' L' + xAt(0).toFixed(1) + ',' + (h-pad) + ' Z';
-
-    var dots = points.map(function(p,i){
-      return '<circle class="lc-dot" data-i="' + i + '" cx="' + xAt(i).toFixed(1) + '" cy="' + yAt(p.value).toFixed(1) + '" r="9" fill="transparent" />';
-    }).join('');
-
-    el.innerHTML =
-      '<svg class="linechart" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" id="lc-svg">' +
-        '<line x1="' + pad + '" y1="' + zeroY + '" x2="' + (w-pad) + '" y2="' + zeroY + '" stroke="var(--line)" stroke-width="1" />' +
-        '<path d="' + areaPath + '" fill="var(--accent-2)" opacity="0.12" />' +
-        '<path d="' + path + '" fill="none" stroke="var(--accent-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />' +
-        '<circle id="lc-cursor" cx="-10" cy="-10" r="4" fill="var(--accent-2)" stroke="var(--surface)" stroke-width="1.5" style="opacity:0" />' +
-        dots +
-      '</svg>' +
-      '<div class="lc-tooltip" id="lc-tooltip"></div>';
-
-    var svg = document.getElementById('lc-svg');
-    var tip = document.getElementById('lc-tooltip');
-    var cursor = document.getElementById('lc-cursor');
-    function showPoint(i){
-      var p = points[i];
-      cursor.setAttribute('cx', xAt(i)); cursor.setAttribute('cy', yAt(p.value)); cursor.style.opacity = 1;
-      var rect = svg.getBoundingClientRect();
-      var xPix = (xAt(i)/w) * rect.width;
-      var yPix = (yAt(p.value)/h) * rect.height;
-      tip.style.left = xPix + 'px'; tip.style.top = yPix + 'px';
-      tip.textContent = esc(p.label) + ' · ' + fmt(p.value);
-      tip.style.opacity = 1;
-    }
-    function hide(){ tip.style.opacity = 0; cursor.style.opacity = 0; }
-    svg.querySelectorAll('.lc-dot').forEach(function(d){
-      d.addEventListener('mouseenter', function(){ showPoint(parseInt(d.dataset.i,10)); });
-      d.addEventListener('touchstart', function(){ showPoint(parseInt(d.dataset.i,10)); }, {passive:true});
-    });
-    svg.addEventListener('mouseleave', hide);
-  }
-
   function monthKey(d){ var dt = new Date(d); return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0'); }
   function monthLabel(key){
     var parts = key.split('-');
@@ -883,19 +860,28 @@
     state.ledger.forEach(function(e){
       if(!e.date) return;
       var k = monthKey(e.date);
-      if(!months[k]) months[k] = { income:0, expense:{} };
-      if(e.type === 'income'){ months[k].income += e.amount||0; }
+      if(!months[k]) months[k] = { income:0, expense:{}, net:0 };
+      if(e.type === 'income'){ months[k].income += e.amount||0; months[k].net += e.amount||0; }
       else {
         var cat = rollupCategory(e.category);
         months[k].expense[cat] = (months[k].expense[cat]||0) + (e.amount||0);
+        months[k].net -= e.amount||0;
       }
     });
-    var keys = Object.keys(months).sort().slice(-6);
+    var allKeys = Object.keys(months).sort();
+    var keys = allKeys.slice(-6);
     if(keys.length === 0){
       el.innerHTML = '<p class="empty">Lance pagamentos e recebimentos para ver o gráfico mensal.</p>';
       if(legendEl) legendEl.innerHTML = '';
       return;
     }
+
+    // saldo acumulado até o fim de cada mês exibido — inclui meses anteriores à janela visível,
+    // para refletir o saldo real (não só o recorte dos últimos 6 meses)
+    var cumBefore = 0;
+    allKeys.forEach(function(k){ if(k < keys[0]) cumBefore += months[k].net; });
+    var running = cumBefore;
+    var cumVals = keys.map(function(k){ running += months[k].net; return running; });
 
     var w = 640, h = 220, pad = 30, gap = 18;
     var groupW = (w - pad*2 - gap*(keys.length-1)) / keys.length;
@@ -911,9 +897,11 @@
     function segH(v){ return (v/maxV) * (h - pad*2); }
 
     var bars = '';
+    var centers = [];
     keys.forEach(function(k, gi){
       var m = months[k];
       var gx = pad + gi*(groupW+gap);
+      centers.push(gx + groupW/2);
       var incH = Math.max(0, segH(m.income) - (m.income>0?2:0));
       bars += '<rect class="mb-bar" data-tip="' + esc(monthLabel(k)) + ' · entradas · ' + fmt(m.income) + '" x="' + gx.toFixed(1) + '" y="' + (baseY-incH).toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + incH.toFixed(1) + '" rx="3" fill="var(--accent-2)" />';
 
@@ -931,16 +919,29 @@
       bars += '<text x="' + (gx+groupW/2).toFixed(1) + '" y="' + (h-9) + '" text-anchor="middle" font-size="10" fill="var(--ink-muted)" font-family="Inter,sans-serif">' + esc(monthLabel(k)) + '</text>';
     });
 
+    // linha de saldo acumulado, em escala própria (independente da escala das barras)
+    var cumMin = Math.min(0, Math.min.apply(null, cumVals));
+    var cumMax = Math.max(0, Math.max.apply(null, cumVals));
+    if(cumMin === cumMax){ cumMax = cumMin + 1; }
+    var lineTop = pad + 6, lineBottom = h - pad - 14;
+    function yForCum(v){ return lineTop + (1 - (v - cumMin)/(cumMax - cumMin)) * (lineBottom - lineTop); }
+    var linePath = centers.map(function(x,i){ return (i===0?'M':'L') + x.toFixed(1) + ',' + yForCum(cumVals[i]).toFixed(1); }).join(' ');
+    var lineDots = centers.map(function(x,i){
+      return '<circle class="ml-dot" data-tip="' + esc(monthLabel(keys[i])) + ' · saldo acumulado · ' + fmt(cumVals[i]) + '" cx="' + x.toFixed(1) + '" cy="' + yForCum(cumVals[i]).toFixed(1) + '" r="4.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="1.5" />';
+    }).join('');
+
     el.innerHTML =
       '<svg class="linechart" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" id="mb-svg">' +
         '<line x1="' + pad + '" y1="' + baseY + '" x2="' + (w-pad) + '" y2="' + baseY + '" stroke="var(--line)" stroke-width="1" />' +
         bars +
+        '<path d="' + linePath + '" fill="none" stroke="var(--ink)" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" />' +
+        lineDots +
       '</svg>' +
       '<div class="lc-tooltip" id="mb-tooltip"></div>';
 
     var svg = document.getElementById('mb-svg');
     var tip = document.getElementById('mb-tooltip');
-    svg.querySelectorAll('.mb-bar').forEach(function(r){
+    svg.querySelectorAll('.mb-bar, .ml-dot').forEach(function(r){
       r.addEventListener('mouseenter', function(){
         var rect = r.getBoundingClientRect(), wrap = svg.getBoundingClientRect();
         tip.style.left = (rect.left - wrap.left + rect.width/2) + 'px';
@@ -957,7 +958,8 @@
         cats.map(function(c){
           var color = c === 'Outro' ? OUTRO_COLOR : CATEGORY_COLOR[c];
           return '<span class="mb-legend-item"><span class="mb-swatch" style="background:' + color + '"></span>' + esc(c) + '</span>';
-        }).join('');
+        }).join('') +
+        '<span class="mb-legend-item"><span class="mb-swatch line" style="background:var(--ink)"></span>Saldo acumulado</span>';
     }
   }
 
@@ -993,8 +995,22 @@
   }
 
   // ---------- render: dívidas & plano ----------
+  function renderStagesGauges(){
+    var el = document.getElementById('stages-gauge-row');
+    if(!el) return;
+    var sorted = state.stages.slice().sort(function(a,b){ return (a.order||0)-(b.order||0); });
+    if(sorted.length === 0){ el.innerHTML = ''; return; }
+    el.innerHTML = sorted.map(function(s){
+      var pct = s.amount > 0 ? Math.min(100, Math.max(0, (s.progress||0)/s.amount*100)) : 0;
+      var color = pct >= 100 ? 'var(--good)' : 'var(--accent-2)';
+      return '<div class="gauge-card">' + gaugeSVG(pct, color, false) +
+        '<div class="gauge-label">' + esc(s.label) + '</div></div>';
+    }).join('');
+  }
+
   function renderStages(){
     var el = document.getElementById('stages-list');
+    renderStagesGauges();
     var sorted = state.stages.slice().sort(function(a,b){ return (a.order||0)-(b.order||0); });
     if(sorted.length === 0){ el.innerHTML = '<p class="empty">Nenhuma etapa cadastrada.</p>'; return; }
     el.innerHTML = sorted.map(function(s){
