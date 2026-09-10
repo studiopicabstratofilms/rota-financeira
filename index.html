@@ -130,6 +130,20 @@
   .bar-track{height:9px; background:var(--surface-raised); border:1px solid var(--line); border-radius:5px; overflow:hidden;}
   .bar-fill{height:100%; background:var(--accent-2); border-radius:5px; transition:width .4s ease;}
   .bar-fill.accent{background:var(--accent);}
+  .bar-fill.warn{background:var(--warning);}
+  .bar-fill.crit{background:var(--critical);}
+  .bar-track-wrap{position:relative;}
+  .bar-tick{position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--ink); opacity:.5; border-radius:1px; transition:left .4s ease;}
+  .mini-progress-label.crit{color:var(--critical); font-weight:600;}
+  .meta-dot{width:9px; height:9px; border-radius:50%; flex-shrink:0;}
+  .pie-slice{cursor:pointer; transition:opacity .12s ease;}
+  .pie-slice:hover{opacity:.85;}
+  .subcat-row{padding:8px 0; border-bottom:1px solid var(--line);}
+  .subcat-row:last-child{border-bottom:none;}
+  .cat-cap-input, .subcat-cap-input, .subcat-cap-new{
+    font-family:'IBM Plex Mono',monospace; border:1px solid var(--line); background:var(--surface-raised); color:var(--ink);
+    border-radius:6px; padding:5px 7px; font-size:12.5px; text-align:right;
+  }
 
   /* stage rows */
   .stages{display:flex; flex-direction:column; gap:8px;}
@@ -307,6 +321,7 @@
     <button class="tab-btn active" data-tab="geral">Visão geral</button>
     <button class="tab-btn" data-tab="orcamento">Orçamento</button>
     <button class="tab-btn" data-tab="dividas">Dívidas &amp; plano</button>
+    <button class="tab-btn" data-tab="categorias">Categorias</button>
     <button class="tab-btn" data-tab="lancamentos">Lançamentos</button>
     <button class="tab-btn" data-tab="investimentos">Investimentos</button>
   </div>
@@ -388,9 +403,18 @@
     <div class="card">
       <div class="card-head">
         <p class="card-title">Gastos por segmento (mês atual)</p>
-        <p class="card-sub">mercado, hortifruti, açougue, educação, diversão…</p>
+        <p class="card-sub">real x meta — vermelho quando passa do teto</p>
       </div>
-      <div class="barchart" id="chart-month-categories"></div>
+      <div id="chart-month-categories"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <p class="card-title">Direcionamento da verba (mês atual)</p>
+        <p class="card-sub">para onde foi o dinheiro gasto este mês</p>
+      </div>
+      <div id="chart-category-pie"></div>
+      <div class="mb-legend" id="chart-category-pie-legend"></div>
     </div>
   </div>
 
@@ -437,6 +461,21 @@
     </div>
   </div>
 
+  <!-- CATEGORIAS -->
+  <div class="panel" id="panel-categorias">
+    <div class="card">
+      <p class="card-title" style="margin-bottom:4px;">Nova categoria</p>
+      <p class="card-sub" style="margin-bottom:10px;">defina um teto mensal — as barras do painel mostram real x meta e ficam vermelhas ao passar do teto</p>
+      <div class="form-grid">
+        <input type="text" id="cat-name" class="grow" placeholder="Nome (ex: Lazer)">
+        <input type="number" id="cat-cap" class="fixed" placeholder="Teto mensal (R$)">
+      </div>
+      <button class="primary" id="cat-add" style="width:100%; margin-top:6px;">Adicionar categoria</button>
+      <p class="error-text" id="cat-error">Preencha nome e teto (ou uma categoria com esse nome já existe).</p>
+    </div>
+    <div id="categories-list"></div>
+  </div>
+
   <!-- LANÇAMENTOS -->
   <div class="panel" id="panel-lancamentos">
     <div class="card">
@@ -453,6 +492,10 @@
           <option value="diego">Diego</option>
           <option value="luiza">Luiza</option>
         </select>
+      </div>
+      <div class="form-grid" id="ledger-category-row">
+        <select id="ledger-category" class="grow"></select>
+        <select id="ledger-subcategory" class="grow" hidden></select>
       </div>
       <label for="ledger-target" style="display:block; font-size:11.5px; color:var(--ink-muted); margin:8px 0 4px;">Vincular a uma dívida ou meta (opcional — enche a barra de progresso dela)</label>
       <div class="form-grid">
@@ -539,7 +582,14 @@
     'Assinatura': 'var(--series-5)'
   };
   var OUTRO_COLOR = 'var(--ink-muted)';
-  function categoryColorFor(cat){ return CATEGORY_COLOR[cat] || OUTRO_COLOR; }
+  // cor por categoria: usa o color_key configurado em budget_categories quando existe
+  // (um dos 5 tons fixos acima); qualquer categoria sem color_key (inclusive novas,
+  // criadas pela aba Categorias) cai em "Outro" — identidade vem do rótulo, não de matiz nova.
+  function categoryColorFor(cat){
+    var bc = state.budgetCategories.filter(function(c){ return c.name === cat; })[0];
+    var key = bc && bc.colorKey;
+    return (key && CATEGORY_COLOR[key]) || CATEGORY_COLOR[cat] || OUTRO_COLOR;
+  }
   // agrupamento (rollup) só para o gráfico mensal empilhado, que só cabe ~5 fatias legíveis
   var CATEGORY_ROLLUP = {
     'Fixo':'Fixo', 'Mercado':'Mercado', 'Hortifruti':'Mercado', 'Açougue':'Mercado',
@@ -565,6 +615,7 @@
 
   var state = {
     fixedItems: [], extras: [], stages: [], ledger: [], investments: [],
+    budgetCategories: [], budgetSubcategories: [],
     config: { reserveGoal: 13500, paydayDay: 10, householdIncome: 0, householdSize: 1, householdState: '' }
   };
 
@@ -696,11 +747,34 @@
     });
     return total;
   }
-  function progressBarHTML(paid, planned){
-    var pct = planned > 0 ? Math.min(100, Math.max(0, (paid/planned)*100)) : 0;
+  // barra de progresso real x meta, usada em TODO progresso do site (itens fixos, etapas
+  // do plano, categorias e subcategorias): a régua marca a meta e, se o real passar dela,
+  // a barra estica além da marca e vira vermelha — igual ao "real x meta" pedido.
+  function progressBarHTML(real, meta){
+    real = real || 0;
+    var m = meta || 0;
+    if(m <= 0){
+      var full = real > 0 ? 100 : 0;
+      return '<div class="mini-progress">' +
+        '<div class="bar-track-wrap"><div class="bar-track"><div class="bar-fill" style="width:' + full + '%"></div></div></div>' +
+        '<span class="mini-progress-label mono">' + fmt(real) + ' · sem teto definido</span>' +
+        '</div>';
+    }
+    var domainMax = Math.max(real, m, 1);
+    var realPct = Math.min(100, (real/domainMax)*100);
+    var metaPct = Math.min(100, (m/domainMax)*100);
+    var ratio = real/m;
+    // só fica vermelho ao ULTRAPASSAR a meta — chegar a 100% é sucesso (dívida quitada,
+    // etapa concluída, teto batido certinho), não alerta; a cor amarela existia como
+    // "quase lá" mas confundia com aviso justamente no momento de bater a meta
+    var fillClass = ratio > 1 ? 'crit' : '';
+    var pct = Math.round(ratio*100);
     return '<div class="mini-progress">' +
-      '<div class="bar-track small"><div class="bar-fill" style="width:' + pct.toFixed(1) + '%"></div></div>' +
-      '<span class="mini-progress-label mono">' + fmt(paid) + ' de ' + fmt(planned) + ' · ' + pct.toFixed(0) + '%</span>' +
+      '<div class="bar-track-wrap">' +
+        '<div class="bar-track"><div class="bar-fill ' + fillClass + '" style="width:' + realPct.toFixed(1) + '%"></div></div>' +
+        '<div class="bar-tick" style="left:' + metaPct.toFixed(1) + '%"></div>' +
+      '</div>' +
+      '<span class="mini-progress-label mono' + (ratio>1?' crit':'') + '">' + fmt(real) + ' de ' + fmt(m) + ' · ' + pct + '%</span>' +
       '</div>';
   }
 
@@ -827,11 +901,12 @@
 
     renderMonthlyChart();
     renderMonthCategoryChart();
+    renderCategoryPie();
   }
 
-  function renderMonthCategoryChart(){
-    var el = document.getElementById('chart-month-categories');
-    if(!el) return;
+  // totais do mês corrente — a mesma fonte (ledger) alimenta o card de real x meta,
+  // a pizza de direcionamento e a aba Categorias, então tudo fecha com o mesmo número
+  function monthCategoryTotals(){
     var curKey = monthKey(new Date());
     var totals = {};
     state.ledger.forEach(function(e){
@@ -839,12 +914,98 @@
       if(monthKey(e.date) !== curKey) return;
       totals[e.category] = (totals[e.category]||0) + (e.amount||0);
     });
-    var rows = Object.keys(totals).map(function(k){ return { key:k, label:k, value:totals[k] }; })
-      .sort(function(a,b){ return b.value - a.value; });
+    return totals;
+  }
+  function monthSubcategoryTotals(){
+    var curKey = monthKey(new Date());
+    var totals = {};
+    state.ledger.forEach(function(e){
+      if(e.type !== 'expense' || !e.date || !e.subcategoryId) return;
+      if(monthKey(e.date) !== curKey) return;
+      totals[e.subcategoryId] = (totals[e.subcategoryId]||0) + (e.amount||0);
+    });
+    return totals;
+  }
+
+  function renderMonthCategoryChart(){
+    var el = document.getElementById('chart-month-categories');
+    if(!el) return;
+    var totals = monthCategoryTotals();
+    var known = state.budgetCategories.map(function(c){ return { id:c.id, name:c.name, real: totals[c.name]||0, meta: c.cap||0, order:c.order||0 }; });
+    var extra = Object.keys(totals).filter(function(n){ return !state.budgetCategories.some(function(c){ return c.name === n; }); })
+      .map(function(n){ return { id:n, name:n, real: totals[n], meta:0, order:999 }; });
+    var rows = known.concat(extra).filter(function(r){ return r.real > 0 || r.meta > 0; })
+      .sort(function(a,b){ return b.real - a.real; });
     if(rows.length === 0){ el.innerHTML = '<p class="empty">Nenhum gasto lançado este mês ainda — lance na aba Lançamentos.</p>'; return; }
-    var colors = {}; rows.forEach(function(r){ colors[r.key] = categoryColorFor(r.key); });
-    renderBarChart('chart-month-categories', rows, colors);
-    attachBarTooltips('chart-month-categories', rows);
+    el.innerHTML = rows.map(function(r){
+      return '<div class="item-block">' +
+        '<div class="item-row">' +
+        '<div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">' +
+        '<span class="meta-dot" style="background:' + categoryColorFor(r.name) + '"></span>' +
+        '<span class="item-name">' + esc(r.name) + '</span></div>' +
+        '<span class="item-value">' + fmt(r.real) + '</span>' +
+        '</div>' +
+        progressBarHTML(r.real, r.meta) +
+        '</div>';
+    }).join('');
+  }
+
+  function renderCategoryPie(){
+    var el = document.getElementById('chart-category-pie');
+    var legendEl = document.getElementById('chart-category-pie-legend');
+    if(!el) return;
+    var totals = monthCategoryTotals();
+    var rolled = {};
+    Object.keys(totals).forEach(function(name){
+      var key = rollupCategory(name);
+      rolled[key] = (rolled[key]||0) + totals[name];
+    });
+    var total = Object.keys(rolled).reduce(function(s,k){ return s + rolled[k]; }, 0);
+    if(total <= 0){ el.innerHTML = '<p class="empty">Nenhum gasto lançado este mês ainda.</p>'; if(legendEl) legendEl.innerHTML = ''; return; }
+    var order = MONTHLY_CATS.concat(['Outro']);
+    var slices = order.filter(function(k){ return rolled[k] > 0; }).map(function(k){
+      return { key:k, label:k, value: rolled[k], color: k === 'Outro' ? OUTRO_COLOR : CATEGORY_COLOR[k] };
+    });
+
+    var r = 40, cx = 50, cy = 50, sw = 16;
+    var circ = 2 * Math.PI * r;
+    var offsetAcc = 0;
+    var arcs = slices.map(function(s){
+      var frac = s.value / total;
+      var len = frac * circ;
+      var gap = slices.length > 1 ? 1.5 : 0;
+      var dasharray = Math.max(0, len - gap).toFixed(2) + ' ' + (circ - len + gap).toFixed(2);
+      var dashoffset = (-offsetAcc).toFixed(2);
+      offsetAcc += len;
+      var pct = (frac*100).toFixed(0);
+      return '<circle class="pie-slice" data-tip="' + esc(s.label) + ' · ' + fmt(s.value) + ' · ' + pct + '%" cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + s.color + '" stroke-width="' + sw + '" stroke-dasharray="' + dasharray + '" stroke-dashoffset="' + dashoffset + '" stroke-linecap="butt" />';
+    }).join('');
+
+    el.innerHTML =
+      '<svg class="gauge-svg" viewBox="0 0 100 100" style="max-width:220px; margin:0 auto; display:block; transform:rotate(-90deg);">' +
+        '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="var(--line)" stroke-width="' + sw + '" opacity=".35"/>' +
+        arcs +
+      '</svg>' +
+      '<p style="text-align:center; margin:10px 0 0;"><strong class="mono" style="font-size:17px;">' + fmt(total) + '</strong><br><span class="card-sub">direcionado este mês</span></p>';
+
+    var tip = document.getElementById('generic-tooltip');
+    el.querySelectorAll('.pie-slice').forEach(function(s){
+      function show(ev){
+        tip.textContent = s.dataset.tip;
+        tip.style.opacity = 1;
+        tip.style.left = (ev.clientX + 14) + 'px';
+        tip.style.top = (ev.clientY - 12) + 'px';
+      }
+      s.addEventListener('mouseenter', show);
+      s.addEventListener('mousemove', show);
+      s.addEventListener('mouseleave', function(){ tip.style.opacity = 0; });
+    });
+
+    if(legendEl){
+      legendEl.innerHTML = slices.map(function(s){
+        return '<span class="mb-legend-item"><span class="mb-swatch" style="background:' + s.color + '"></span>' + esc(s.label) + '</span>';
+      }).join('');
+    }
   }
 
   function monthKey(d){ var dt = new Date(d); return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0'); }
@@ -996,6 +1157,50 @@
     document.getElementById('orc-pago').textContent = fmt(d.paid + l.paid + c.paid);
   }
 
+  // ---------- render: categorias (tetos) ----------
+  function renderCategoriesTab(){
+    var el = document.getElementById('categories-list');
+    if(!el) return;
+    var totals = monthCategoryTotals();
+    var subTotals = monthSubcategoryTotals();
+    var cats = state.budgetCategories.slice().sort(function(a,b){ return (a.order||0)-(b.order||0); });
+    if(cats.length === 0){ el.innerHTML = '<p class="empty">Nenhuma categoria cadastrada ainda.</p>'; return; }
+    el.innerHTML = cats.map(function(c){
+      var real = totals[c.name] || 0;
+      var subs = state.budgetSubcategories.filter(function(s){ return s.categoryId === c.id; }).sort(function(a,b){ return (a.order||0)-(b.order||0); });
+      var subsHtml = subs.map(function(s){
+        var sReal = subTotals[s.id] || 0;
+        return '<div class="subcat-row">' +
+          '<div class="item-row">' +
+          '<span class="item-name" style="margin-left:2px;">↳ ' + esc(s.name) + '</span>' +
+          '<div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">' +
+          '<input type="number" class="subcat-cap-input" data-subcat-id="' + s.id + '" value="' + (s.cap||0) + '" style="width:82px;">' +
+          '<button class="del-btn" data-del-subcat="' + s.id + '">✕</button>' +
+          '</div></div>' +
+          progressBarHTML(sReal, s.cap||0) +
+          '</div>';
+      }).join('');
+      return '<div class="card">' +
+        '<div class="card-head">' +
+        '<div style="display:flex; align-items:center; gap:8px;"><span class="meta-dot" style="background:' + categoryColorFor(c.name) + '"></span><p class="card-title" style="margin:0;">' + esc(c.name) + '</p></div>' +
+        '<button class="del-btn" data-del-cat="' + esc(c.id) + '">✕</button>' +
+        '</div>' +
+        '<div class="item-row" style="margin-bottom:8px;">' +
+        '<span class="card-sub">teto mensal da categoria</span>' +
+        '<input type="number" class="cat-cap-input" data-cat-id="' + esc(c.id) + '" value="' + (c.cap||0) + '" style="width:100px;">' +
+        '</div>' +
+        progressBarHTML(real, c.cap||0) +
+        '<div style="margin-top:12px; padding-top:10px; border-top:1px solid var(--line);">' +
+        (subs.length ? subsHtml : '<p class="card-sub" style="margin-bottom:8px;">sem subcategorias ainda</p>') +
+        '<div class="form-grid" style="margin-top:8px;">' +
+        '<input type="text" class="grow subcat-name-input" data-cat-id="' + esc(c.id) + '" placeholder="Nova subcategoria">' +
+        '<input type="number" class="fixed subcat-cap-new" data-cat-id="' + esc(c.id) + '" placeholder="Teto">' +
+        '<button class="primary add-subcat-btn" data-cat-id="' + esc(c.id) + '">+</button>' +
+        '</div></div>' +
+        '</div>';
+    }).join('');
+  }
+
   // ---------- render: dívidas & plano ----------
   function renderStagesGauges(){
     var el = document.getElementById('stages-gauge-row');
@@ -1059,6 +1264,11 @@
     }
     return null;
   }
+  function subcategoryName(e){
+    if(!e.subcategoryId) return null;
+    var s = state.budgetSubcategories.filter(function(x){ return x.id === e.subcategoryId; })[0];
+    return s ? s.name : null;
+  }
   function renderLedger(){
     var el = document.getElementById('list-ledger');
     document.getElementById('ledger-count').textContent = state.ledger.length ? (state.ledger.length + ' registro(s)') : '';
@@ -1067,7 +1277,8 @@
     el.innerHTML = sorted.map(function(e){
       var d = e.date ? new Date(e.date).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '';
       var tn = targetName(e);
-      var meta = [d, OWNER_LABEL[e.owner] || '', tn || e.category].filter(Boolean).join(' · ');
+      var catLabel = e.category + (subcategoryName(e) ? ' · ' + subcategoryName(e) : '');
+      var meta = [d, OWNER_LABEL[e.owner] || '', tn || catLabel].filter(Boolean).join(' · ');
       return '<div class="list-item">' +
         '<div><div class="li-desc">' + esc(e.desc) + '</div><div class="li-meta">' + esc(meta) + '</div></div>' +
         '<div style="display:flex; align-items:center; gap:8px;">' +
@@ -1111,6 +1322,30 @@
     if(stillThere) sel.value = prev;
   }
 
+  // ---------- categoria/subcategoria do lançamento ----------
+  function renderLedgerCategoryOptions(){
+    var sel = document.getElementById('ledger-category');
+    if(!sel) return;
+    var prev = sel.value;
+    var cats = state.budgetCategories.slice().sort(function(a,b){ return (a.order||0)-(b.order||0); });
+    sel.innerHTML = cats.length
+      ? cats.map(function(c){ return '<option value="' + esc(c.name) + '">' + esc(c.name) + '</option>'; }).join('')
+      : '<option value="Extraordinária">Extraordinária</option>';
+    var stillThere = Array.prototype.some.call(sel.options, function(o){ return o.value === prev; });
+    if(stillThere && prev) sel.value = prev;
+    renderLedgerSubcategoryOptions();
+  }
+  function renderLedgerSubcategoryOptions(){
+    var catSel = document.getElementById('ledger-category');
+    var subSel = document.getElementById('ledger-subcategory');
+    if(!catSel || !subSel) return;
+    var cat = state.budgetCategories.filter(function(c){ return c.name === catSel.value; })[0];
+    var subs = cat ? state.budgetSubcategories.filter(function(s){ return s.categoryId === cat.id; }).sort(function(a,b){ return (a.order||0)-(b.order||0); }) : [];
+    if(subs.length === 0){ subSel.innerHTML = ''; subSel.hidden = true; return; }
+    subSel.innerHTML = '<option value="">— sem subcategoria —</option>' + subs.map(function(s){ return '<option value="' + s.id + '">' + esc(s.name) + '</option>'; }).join('');
+    subSel.hidden = false;
+  }
+
   // ---------- render: investimentos ----------
   function renderInvestimentos(){
     document.getElementById('inv-total').textContent = fmt(investTotal());
@@ -1134,9 +1369,11 @@
     renderCharts();
     renderOrcamentoTab();
     renderDebtsTab();
+    renderCategoriesTab();
     renderLedger();
     renderInvestimentos();
     renderLedgerTargetOptions();
+    renderLedgerCategoryOptions();
   }
 
   // ---------- event delegation for dynamic content ----------
@@ -1149,6 +1386,18 @@
       supa.from('fixed_items').update({ paid_amount: newAmount }).eq('id', id).then(function(res){
         if(res.error){ toast('Não foi possível salvar. Seu e-mail tem acesso a este painel?'); e.target.checked = !checked; }
       });
+    }
+    if(e.target.classList.contains('cat-cap-input')){
+      var catId = e.target.dataset.catId;
+      var cap = parseFloat(e.target.value) || 0;
+      supa.from('budget_categories').update({ monthly_cap: cap }).eq('id', catId)
+        .then(function(res){ if(res.error) toast('Não foi possível salvar o teto.'); else toast('Teto salvo!'); });
+    }
+    if(e.target.classList.contains('subcat-cap-input')){
+      var subId = e.target.dataset.subcatId;
+      var subCap = parseFloat(e.target.value) || 0;
+      supa.from('budget_subcategories').update({ monthly_cap: subCap }).eq('id', subId)
+        .then(function(res){ if(res.error) toast('Não foi possível salvar o teto.'); else toast('Teto salvo!'); });
     }
   });
   document.addEventListener('click', function(e){
@@ -1171,6 +1420,27 @@
     if(e.target.dataset.delInv){
       supa.from('investments').delete().eq('id', e.target.dataset.delInv).then(function(res){ if(res.error) toast('Não foi possível remover.'); });
     }
+    if(e.target.dataset.delCat){
+      supa.from('budget_categories').delete().eq('id', e.target.dataset.delCat).then(function(res){ if(res.error) toast('Não foi possível remover.'); });
+    }
+    if(e.target.dataset.delSubcat){
+      supa.from('budget_subcategories').delete().eq('id', e.target.dataset.delSubcat).then(function(res){ if(res.error) toast('Não foi possível remover.'); });
+    }
+    if(e.target.classList.contains('add-subcat-btn')){
+      var catId = e.target.dataset.catId;
+      var wrap = e.target.closest('.form-grid');
+      var nameEl = wrap.querySelector('.subcat-name-input');
+      var capEl = wrap.querySelector('.subcat-cap-new');
+      var name = nameEl.value.trim();
+      var cap = parseFloat(capEl.value) || 0;
+      if(!name) return;
+      var existing = state.budgetSubcategories.filter(function(s){ return s.categoryId === catId; });
+      var nextOrder = existing.length ? Math.max.apply(null, existing.map(function(s){ return s.order||0; })) + 1 : 1;
+      supa.from('budget_subcategories').insert({ category_id: catId, name: name, monthly_cap: cap, sort_order: nextOrder })
+        .then(function(res){ if(res.error) toast('Não foi possível salvar. Seu e-mail tem acesso a este painel?'); });
+      nameEl.value = '';
+      capEl.value = '';
+    }
   });
 
   // ---------- add forms ----------
@@ -1182,7 +1452,28 @@
       .then(function(res){ if(res.error) toast('Não foi possível salvar.'); else toast('Salvo!'); });
   });
 
-  document.getElementById('ledger-type').addEventListener('change', renderLedgerTargetOptions);
+  function updateLedgerCategoryRowVisibility(){
+    var isExpense = document.getElementById('ledger-type').value === 'expense';
+    document.getElementById('ledger-category-row').style.display = isExpense ? 'flex' : 'none';
+  }
+  document.getElementById('ledger-type').addEventListener('change', function(){
+    renderLedgerTargetOptions();
+    updateLedgerCategoryRowVisibility();
+  });
+  document.getElementById('ledger-category').addEventListener('change', renderLedgerSubcategoryOptions);
+  document.getElementById('ledger-target').addEventListener('change', function(){
+    // ao vincular a um item do orçamento, pré-seleciona a categoria dele (o usuário ainda pode trocar)
+    var targetRaw = this.value;
+    if(!targetRaw) return;
+    var sep = targetRaw.indexOf(':');
+    var tType = targetRaw.slice(0, sep), tId = targetRaw.slice(sep+1);
+    if(tType === 'fixed_item'){
+      var fi = state.fixedItems.filter(function(x){ return x.id === tId; })[0];
+      var catSel = document.getElementById('ledger-category');
+      if(fi && catSel){ catSel.value = fi.category; renderLedgerSubcategoryOptions(); }
+    }
+  });
+  updateLedgerCategoryRowVisibility();
   document.getElementById('ledger-installment-toggle').addEventListener('change', function(e){
     document.getElementById('ledger-installment-fields').style.display = e.target.checked ? 'flex' : 'none';
   });
@@ -1198,17 +1489,13 @@
     errEl.style.display = 'none';
 
     var targetType = null, targetId = null;
-    var category = type === 'income' ? 'Renda' : 'Extraordinária';
+    var category = type === 'income' ? 'Renda' : (document.getElementById('ledger-category').value || 'Extraordinária');
+    var subcategoryId = type === 'expense' ? (document.getElementById('ledger-subcategory').value || null) : null;
     if(targetRaw){
       var sep = targetRaw.indexOf(':');
       targetType = targetRaw.slice(0, sep);
       targetId = targetRaw.slice(sep+1);
-      if(targetType === 'fixed_item'){
-        var fi = state.fixedItems.filter(function(x){ return x.id === targetId; })[0];
-        if(fi) category = fi.category;
-      } else if(targetType === 'plan_stage'){
-        category = 'Meta do plano';
-      }
+      if(targetType === 'plan_stage'){ category = type === 'income' ? 'Renda' : 'Meta do plano'; subcategoryId = null; }
     }
 
     var isInstallment = document.getElementById('ledger-installment-toggle').checked;
@@ -1219,10 +1506,10 @@
       var per = Math.round((amount / n) * 100) / 100;
       for(var k=0; k<n; k++){
         var d = new Date(now.getFullYear(), now.getMonth()+k, now.getDate());
-        rows.push({ description: desc + ' (parcela ' + (k+1) + '/' + n + ')', amount: per, type: type, owner: owner, category: category, target_type: targetType, target_id: targetId, event_date: d.toISOString() });
+        rows.push({ description: desc + ' (parcela ' + (k+1) + '/' + n + ')', amount: per, type: type, owner: owner, category: category, subcategory_id: subcategoryId, target_type: targetType, target_id: targetId, event_date: d.toISOString() });
       }
     } else {
-      rows.push({ description: desc, amount: amount, type: type, owner: owner, category: category, target_type: targetType, target_id: targetId, event_date: now.toISOString() });
+      rows.push({ description: desc, amount: amount, type: type, owner: owner, category: category, subcategory_id: subcategoryId, target_type: targetType, target_id: targetId, event_date: now.toISOString() });
     }
 
     supa.from('ledger').insert(rows).then(function(res){
@@ -1234,6 +1521,20 @@
     document.getElementById('ledger-target').value = '';
     document.getElementById('ledger-installment-toggle').checked = false;
     document.getElementById('ledger-installment-fields').style.display = 'none';
+  });
+
+  document.getElementById('cat-add').addEventListener('click', function(){
+    var name = document.getElementById('cat-name').value.trim();
+    var cap = parseFloat(document.getElementById('cat-cap').value);
+    var errEl = document.getElementById('cat-error');
+    var dup = state.budgetCategories.some(function(c){ return c.name.toLowerCase() === name.toLowerCase(); });
+    if(!name || isNaN(cap) || cap < 0 || dup){ errEl.style.display = 'block'; return; }
+    errEl.style.display = 'none';
+    var nextOrder = state.budgetCategories.length ? Math.max.apply(null, state.budgetCategories.map(function(c){ return c.order||0; })) + 1 : 1;
+    supa.from('budget_categories').insert({ id: name, name: name, monthly_cap: cap, sort_order: nextOrder })
+      .then(function(res){ if(res.error) toast('Não foi possível salvar. Seu e-mail tem acesso a este painel?'); });
+    document.getElementById('cat-name').value = '';
+    document.getElementById('cat-cap').value = '';
   });
 
   document.getElementById('inv-add').addEventListener('click', function(){
@@ -1253,8 +1554,10 @@
   function mapFixed(r){ return { id:r.id, name:r.name, owner:r.owner, category:r.category, planned:Number(r.planned), paid:r.paid, paidAmount:Number(r.paid_amount)||0, order:r.sort_order }; }
   function mapExtra(r){ return { id:r.id, desc:r.description, value:Number(r.value), owner:r.owner, category:r.category, date:r.event_date }; }
   function mapStage(r){ return { id:r.id, label:r.label, note:r.note, amount:Number(r.amount), type:r.type, done:r.done, progress:Number(r.progress)||0, completedAt:r.completed_at, order:r.sort_order }; }
-  function mapLedger(r){ return { id:r.id, desc:r.description, amount:Number(r.amount), type:r.type, date:r.event_date, owner:r.owner, category:r.category, targetType:r.target_type, targetId:r.target_id }; }
+  function mapLedger(r){ return { id:r.id, desc:r.description, amount:Number(r.amount), type:r.type, date:r.event_date, owner:r.owner, category:r.category, subcategoryId:r.subcategory_id, targetType:r.target_type, targetId:r.target_id }; }
   function mapInvest(r){ return { id:r.id, name:r.name, type:r.type, value:Number(r.value), date:r.event_date }; }
+  function mapBudgetCategory(r){ return { id:r.id, name:r.name, cap:Number(r.monthly_cap)||0, colorKey:r.color_key, order:r.sort_order }; }
+  function mapBudgetSubcategory(r){ return { id:r.id, categoryId:r.category_id, name:r.name, cap:Number(r.monthly_cap)||0, order:r.sort_order }; }
   function mapConfig(r){
     return {
       reserveGoal: Number(r.reserve_goal), paydayDay: Number(r.payday_day),
@@ -1268,7 +1571,7 @@
     if(booted) return;
     booted = true;
     setSync('busy', 'carregando…');
-    var loaded = 0, expected = 6;
+    var loaded = 0, expected = 8;
     function done(){ loaded++; if(loaded >= expected) setSync('on', 'sincronizado · compartilhado'); }
 
     function loadAll(table, mapper, key){
@@ -1288,6 +1591,8 @@
     loadAll('plan_stages', mapStage, 'stages');
     loadAll('ledger', mapLedger, 'ledger');
     loadAll('investments', mapInvest, 'investments');
+    loadAll('budget_categories', mapBudgetCategory, 'budgetCategories');
+    loadAll('budget_subcategories', mapBudgetSubcategory, 'budgetSubcategories');
     supa.from('meta_config').select('*').eq('id', true).maybeSingle().then(function(res){
       if(res.data){ state.config = mapConfig(res.data); renderAll(); }
       done();
@@ -1298,7 +1603,9 @@
       ['extras', mapExtra, 'extras'],
       ['plan_stages', mapStage, 'stages'],
       ['ledger', mapLedger, 'ledger'],
-      ['investments', mapInvest, 'investments']
+      ['investments', mapInvest, 'investments'],
+      ['budget_categories', mapBudgetCategory, 'budgetCategories'],
+      ['budget_subcategories', mapBudgetSubcategory, 'budgetSubcategories']
     ];
     tables.forEach(function(t){
       supa.channel('sync-' + t[0])
